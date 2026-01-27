@@ -1,0 +1,136 @@
+---
+title: "Day 1 Recap"
+author: ''
+date: "05/12/2024"
+output:
+  beamer_presentation: default
+  ioslides_presentation:
+    widescreen: true
+    smaller: true
+    logo: Images/uniOfCamCrukLogos.png
+    css: css/stylesheet.css
+---
+
+
+
+## Workflow
+
+```{r echo=FALSE, out.width='60%', fig.align='center'}
+knitr::include_graphics('Images/workflow2.png')
+```
+
+## Data set 
+
+* Data set: [CaronBourque2020](https://www.nature.com/articles/s41598-020-64929-x): Data from Childhood acute lymphoblastic leukemia (cALL)
+* cells: Bone Marrow Mononuclear cells (BMMCs)
+  * 12 samples 
+  * 4 Sample groups
+    * HHD: The high hyper diploid cases (51–67 chromosomes). 
+      * Two replicates.
+    * PBMMC: healthy pediatric BMMC. 
+      * Four replicates.
+      * There are two PBMMC_1 samples. These are two libraries from the same
+sample material. 
+    * ETV6-RUNX1: ETV6/RUNX1 rearrangement
+      * Four replicates
+    * Pre-T: Pre-T ALL 
+      * Two replicates
+* Aim: characterize the heterogeneity of gene expression at the cell level, within and between patients
+
+      
+## 10x library file structure
+
+The 10x library contains four pieces of information, in the form of DNA sequences,
+for each "read".
+
+* **sample index** - identifies the library, with one or two indexes per sample
+* **10x barcode** -  identifies the droplet in the library
+* **UMI** - identifies the transcript molecule within a cell and gene
+* **insert** - the transcript molecule
+
+
+```{r echo=FALSE, out.width='60%', fig.align='center'}
+knitr::include_graphics('Images/tenxLibStructureV3dual2.png')
+```
+
+
+
+
+## Cell Ranger
+
+* 10x Cell Ranger -  This not only carries out the alignment and feature
+  counting, but will also:
+    * Call cells
+    * Generates counts matrix
+    * Generate a summary report in html format
+    * Generate a "cloupe" file
+
+## Cell Ranger references
+
+cellranger mkref \
+  --fasta={GENOME FASTA} \
+  --genes={ANNOTATION GTF} \
+  --genome={OUTPUT FOLDER FOR INDEX} \
+  --nthreads={CPUS}
+
+
+## Running cellranger count
+
+cellranger count --id={OUTPUT_SAMPLE_NAME} \
+                 --transcriptome={DIRECTORY_WITH_REFERENCE} \
+                 --fastqs={DIRECTORY_WITH_FASTQ_FILES} \
+                 --sample={NAME_OF_SAMPLE_IN_FASTQ_FILES} \
+                 --localcores={NUMBER_OF_CPUS} \
+                 --localmem={RAM_MEMORY}
+                 
+## Cell Ranger outputs
+
+The contents of the `outs` directory are:
+
+```{r outputDirOuts, echo=FALSE, fig.align='center', out.width="75%"}
+knitr::include_graphics("Images/CellRangerOutputOuts.png")
+```
+
+
+## Not every droplet is useble
+
+```{r echo=FALSE, out.width='100%', fig.align='center', out.height='80%'}
+knitr::include_graphics('Images/droplet_overview.png')
+```
+
+## Quality Control overview
+
+<div style="width: 55%; float: left;">
+* Aim of QC is ...
+  * To remove undetected genes
+  * To remove empty droplets
+  * To remove droplets with dead cells
+  * To remove Doublet/multiplet 
+  * Ultimately To filter the data to only include true cells that are of high quality 
+
+
+## The _SingleCellExperiment_ object
+
+<div style="width: 75%; float: top; padding-left: 10%">
+<img src="Images/sce_object_2.png" class="centerimg" style="width: 100%">
+</div>
+
+
+## Useful commands in QC
+
+* access counts: counts(sce)
+
+* access gene metadata: rowData(sce)
+
+* access cell metadata: colData(sce)
+
+## QC parameters
+
+* The library size
+* Number of expressed genes in each cell 
+* proportion of UMIs mapped to genes in the mitochondrial genome
+
+
+
+
+
