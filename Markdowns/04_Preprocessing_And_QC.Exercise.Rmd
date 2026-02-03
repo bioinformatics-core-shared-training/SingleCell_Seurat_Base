@@ -1,0 +1,257 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+subtitle: 'Quality Control - Practical'
+output:
+  html_document:
+    toc: yes
+    number_sections: true
+    code_folding: show 
+    css: ../css/boxes.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(sctransform)
+library(ggplot2)
+library(tidyverse)
+set.seed = 123 
+```
+
+## Introduction
+
+In the demonstration we performed QC and filtering of 4 of our sample, one from each of our sample groups. For this practical we would like you to perform QC and filtering on the full dataset.
+
+## Load the sample metadata
+
+```{r samplesheet}
+sampleinfo <- read_tsv("../Data/sample_sheet.tsv")
+```
+## Load the data
+
+:::exercise 
+In order to load the CellRanger data for all of the samples, you will first
+need to create a named vector of the paths to the filtered count matrix folders 
+called `list_of_files` and then use this in the `Read10X` command. 
+
+<details><summary>Hint</summary>
+The paths to `filtered_feature_bc_matrix` directories for each sample can be
+constructed using the **Sample** column as:   
+
+<span style = "color: #545454; font-weight: bold;">Data/CellRanger_Outputs/<span style="color: #2e2892; font-style: italic;">*Sample*</span>/outs/filtered_feature_bc_matrix</span>
+
+You will need to use a function such as `str_c` or `paste`
+
+The names of the vector will determine the identifer used in the cell barcodes, this should be the sample name as in the **SampleName** column of the sample sheet.
+
+As Seurat V5 no longer supports parallelisation with `future` this step may take a couple of minutes.
+</details>
+
+
+<details><summary>Answer</summary>
+```{r load_data_answer, purl=FALSE}
+samples <- sampleinfo$Sample
+list_of_files <- str_c("../Data/CellRanger_Outputs/", 
+                       samples, 
+                       "/outs/filtered_feature_bc_matrix")
+names(list_of_files) <- sampleinfo$SampleName
+list_of_files
+
+    
+expression_matrix <- Read10X(data.dir = list_of_files)
+seurat_object = CreateSeuratObject(counts = expression_matrix, min.cells = 1)
+seurat_object
+```
+</details>
+
+:::
+
+## Check samples and modify the metadata
+
+The first thing we will do is to adjust the metadata as we did in the demonstration to include the sample name and sample group which we obtain from the `orig.ident` column.
+
+```{r check_data_object, warning=FALSE, message=FALSE}
+temp_meta.data <- seurat_object@meta.data %>%
+  rownames_to_column("Cell") %>%
+  separate(col = "orig.ident", into = c("SampleGroup"), sep = "-", remove = FALSE) %>%
+  mutate(SampleName = orig.ident) %>%
+  column_to_rownames("Cell")
+
+seurat_object@meta.data <- temp_meta.data
+head(seurat_object@meta.data)
+```
+
+
+## Add the mitochondrial percentages to the meta data
+
+```{r add_mito}
+seurat_object[["percent.mt"]] <- PercentageFeatureSet(seurat_object, pattern = "^MT-")
+```
+
+# Explore QC metric distribution
+
+Before moving on to do the actual cell filtering, it is always a good idea to
+explore the distribution of the metrics across the droplets.
+
+:::exercise
+Use the `Seurat` function `VlnPlot` to generate plots showing the
+distributions of the total number of UMIs, the number of genes detected and
+percentage of UMIs aligned to mitochondrial genes across all cells for each
+sample.
+
+This time we will use the cols argument and a vector of colours to make it easier to tell each sample group apart.
+
+The code for plotting the total number of UMIs is shown below. You will also
+need to plot the the number of genes detected and percentage of UMIs aligned to
+mitochondrial.
+
+```{r plot_library_size, eval = FALSE, fig.width=12, fig.height=4}
+colours <- c("cyan3","cyan3","cyan3","cyan3","darkgoldenrod1","darkgoldenrod1","blue","blue","blue","lightgreen","lightgreen")
+
+VlnPlot(seurat_object, 
+        features = c("nCount_RNA"), 
+        cols = colours,
+        layer = "counts", 
+        pt.size=0) +
+  ggtitle("Total count of UMIs")
+```
+
+<details><summary>Answer</summary>
+```{r plot_detected_genes_answer, eval = FALSE, purl=FALSE, fig.width=12, fig.height=4}
+VlnPlot(seurat_object, 
+        features = c("nFeature_RNA"), 
+        cols = colours,
+        layer = "counts", 
+        pt.size=0) +
+  ggtitle("Detected Features")
+```
+
+```{r plot_MT_content_answer, eval = FALSE, purl=FALSE, fig.width=12, fig.height=4}
+VlnPlot(seurat_object, 
+        features = c("percent.mt"), 
+        cols = colours,
+        layer = "counts", 
+        pt.size=0) +
+  ggtitle("Mitochondrial Percentage")
+```
+</details>
+
+:::
+
+# Identification of low-quality cells with adaptive thresholds
+
+:::exercise
+
+With these samples we have three possible "batch" levels at which we could 
+run adaptive filtering. We could apply the filtering across all samples 
+together (i.e. no `batch`), we could apply it by sample group (ETV6-RUNX1, 
+HHD, PBMMC, PRE-T), or we could apply it per sample.  
+
+How many cells will be removed from the data set if we used sample group? And do you think this is a reasonable method to choose? How would you decide?
+
+
+<details><summary>Hint</summary>
+Use the code from the demonstration to set thresholds at a `SampleGroup` level rather than for every sample. Change the filtering of the metadata to get only the cells you want.
+</details>
+
+
+<details><summary>Answer</summary>
+
+```{r QCfiltering, purl=FALSE}
+metadata <- seurat_object@meta.data
+
+E_keep_cells <- metadata %>%
+  filter(SampleGroup == "ETV6RUNX1") %>%
+  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA)),
+         nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA)),
+         percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
+  rownames_to_column("Cell") %>%
+  pull(Cell)
+
+H_keep_cells <- metadata %>%
+  filter(SampleGroup == "HHD") %>%
+  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA)),
+         nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA)),
+         percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
+  rownames_to_column("Cell") %>%
+  pull(Cell)
+
+PR_keep_cells <- metadata %>%
+  filter(SampleGroup == "PRET") %>%
+  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA)),
+         nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA)),
+         percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
+  rownames_to_column("Cell") %>%
+  pull(Cell)
+
+PB_keep_cells <- metadata %>%
+  filter(SampleGroup == "PBMMC") %>%
+  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA)),
+         nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA)),
+         percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
+  rownames_to_column("Cell") %>%
+  pull(Cell)
+
+all_keep_cells <- c(E_keep_cells, H_keep_cells, PR_keep_cells, PB_keep_cells)
+
+53476 - length(all_keep_cells)
+
+```
+In total `r 53476 - length(all_keep_cells)` cells will be removed from the
+dataset.
+
+It is clear that there are significantly different distribution profiles between
+samples in the same group. Noticeably the distribution profiles for the two HDD
+samples are quite different. For this reason it may be prudent to apply the
+adaptive filtering to each sample independently.
+
+We can help ourselves decide by drawing out the plots. We have set the Seurat plot's points to 0 to remove them but added our own geom_point from `ggplot2` to display the cells we are keeping and removing in different colours.
+
+```{r plot_filtered_cells}
+new_metadata <- metadata %>%
+  rownames_to_column("Cell") %>%
+  mutate(Keep = ifelse(Cell %in% all_keep_cells, "Keep", "Remove")) %>%
+  column_to_rownames("Cell")
+
+seurat_object@meta.data <- new_metadata
+
+VlnPlot(seurat_object, 
+        features = c("nFeature_RNA"), 
+        cols = rep(c("white"), each = 11),
+        layer = "counts", 
+        pt.size=0) +
+  geom_point(mapping = aes(color = seurat_object@meta.data$Keep), size = 0.5) + theme(legend.position = 'none')
+
+VlnPlot(seurat_object, 
+        features = c("nCount_RNA"), 
+        cols = rep(c("white"), each = 11),
+        layer = "counts", 
+        pt.size=0) +
+  geom_point(mapping = aes(color = seurat_object@meta.data$Keep), size = 0.5) + theme(legend.position = 'none')
+
+VlnPlot(seurat_object, 
+        features = c("percent.mt"), 
+        cols = rep(c("white"), each = 11),
+        layer = "counts", 
+        pt.size=0) +
+  geom_point(mapping = aes(color = seurat_object@meta.data$Keep), size = 0.5) + theme(legend.position = 'none')
+
+
+```
+
+</details>
+
+:::
+
+If we are happy with this filtering we can remove them from the Seurat object.
+
+```{r filter_seurat_object}
+filtered_seurat_object <- subset(seurat_object, cells = all_keep_cells)
+```
+
+```{r info}
+sessionInfo()
+```
+
+
+
