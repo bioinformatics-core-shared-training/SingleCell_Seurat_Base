@@ -4,7 +4,7 @@ library(glmGamPoi)
 library(ggplot2)
 library(tidyverse)
 set.seed = 123 
-
+options(future.globals.maxSize = 3.0 * 1e9)
 
 seurat_object_500 <- readRDS("../RObjects/Filtered.500.rds")
 seurat_object_full <- readRDS("../RObjects/Filtered.full.rds")
