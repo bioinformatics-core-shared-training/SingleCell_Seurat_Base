@@ -141,6 +141,8 @@ expression values in some downstream analyses, such as dimensionality reduction.
 
 ## Selection of highly variable genes
 
+In feature selection the principle is to remove those genes which are uninteresting or uninformative to both improve computation and because this 'noise' reduction will hopefully enable us to more clearly see the true biology in our data. We make the assumption that most of the low level variance is not caused by real biology and is due to stochastic sampling in the single cell protocol and various other technical effects. The genes which have the most variance are therefore the ones that reflect the real biological difference and are what we want to focus on. This is obviously not a perfect assumption but it is a good way to make informed interpretations from your data that you can hopefully have a little more confidence in.
+
 We often use scRNA-seq data in exploratory analyses to characterize
 heterogeneity across cells. Procedures like clustering and dimensionality
 reduction compare cells based on their gene expression profiles, which involves
@@ -251,7 +253,7 @@ We can check this against the 3000 selected above by colouring the plot.
 
 ```{r trendline_top3000}
 # same plot but colour points by if in the top3000 HVGs we set before
-top3000 <- head(VariableFeatures(seurat_object), 3000)
+top3000 <- head(VariableFeatures(seurat_object_norm), 3000)
 mean_var_df <- mean_var_df %>% 
   mutate(Top3000 = ifelse(rownames(mean_var_df) %in% top3000, TRUE, FALSE))
 ggplot(mean_var_df, aes(x = mean, y = variance)) +

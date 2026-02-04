@@ -1,0 +1,155 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+date: "January 2026"
+output:
+  html_document:
+    toc: yes
+    number_sections: true
+    code_folding: show 
+    css: ../css/boxes.css
+subtitle: Dimensionality Reduction
+---
+
+# Introduction
+
+In this section we are going to cover the basics of 
+dimensionality reduction. These methods allow us to represent our 
+multi-dimensional data (with thousands of cells) in a 
+reduced set of dimensions for visualisation and more efficient downstream 
+analysis. 
+
+In dimensionality reduction we attempt to find a way to represent all the the information we have in expression space in a way that we can easily interpret. High dimensional data has several issues. There is a high computational requirement to performing analysis on 30,000 genes and 47,000 cells (in the Caron dataset). Humans live in a 3D world; we can't easily visualise all the dimensions. And then there is sparsity. As the number of dimensions increases the distance between two data points increases and becomes more invariant. This invariance causes us problems when we try to cluster the data into biologically similar groupings. By applying some dimensionality reducing methods we can solve these issues to a level where we can make interpretations.
+
+# Setup
+
+Before we start, let's load our packages and read our data in. 
+
+```{r load_packages, include=FALSE, message=FALSE, warning=FALSE}
+library(Seurat)
+library(ggplot2)
+library(tidyverse)
+set.seed = 123 
+```
+We will load the _Seurat_ object generated in the
+[Normalisation](05_Normalisation.html) section, which contains normalised counts
+for 500 cells per sample. For demonstration purposes we are not using the full dataset but you would in your analyses.
+
+```{r load_data}
+seurat_object <- readRDS("../RObjects/SCT.500.rds")
+```
+
+# Dimensionality Reduction 
+
+Many scRNA-seq analysis procedures involve comparing cells based on their
+expression values across thousands of genes. Thus, each individual gene
+represents a dimension of the data (and the total number of genes represents the
+"dimensionality" of the data). More intuitively, if we had a scRNA-seq data set
+with only two genes, we could visualise our data in a two-dimensional
+scatterplot, with each axis representing the expression of a gene and each point
+in the plot representing a cell. Intuitively, we can imagine the same for 3
+genes, represented as a 3D plot. Although it becomes harder to imagine, this
+concept can be extended to data sets with thousands of genes (dimensions), where
+each cell’s expression profile defines its location in the high-dimensional
+expression space.
+
+As the name suggests, dimensionality reduction aims to reduce the number of
+separate dimensions in the data. This is possible because different genes are
+correlated if they are affected by the same biological process. Thus, we do not
+need to store separate information for individual genes, but can instead
+compress multiple features into a single dimension, e.g., an “eigengene”
+(Langfelder and Horvath 2007). This reduces computational work in downstream
+analyses like clustering, as calculations only need to be performed for a few
+dimensions, rather than thousands. It also reduces noise by averaging across
+multiple genes to obtain a more precise representation of the patterns in the
+data. And finally it enables effective visualisation of the data, for those of
+us who are not capable of visualizing more than 2 or 3 dimensions.
+
+Here, we will cover three methods that are most commonly used in scRNA-seq
+analysis:
+
+- Principal Components Analysis (PCA)
+- t-Distributed Stochastic Neighbor Embedding (t-SNE)
+- Uniform Manifold Approximation and Projection (UMAP)
+
+Before we go into the details of each method, it is important to mention that
+while the first method (PCA) can be used for downstream analysis of the data
+(such as cell clustering), the latter two methods (t-SNE and UMAP) should only
+be used for visualisation and not for any other kind of analysis.
+
+## Principal Components Analysis
+
+One of the most used and well-known methods of dimensionality reduction is
+principal components analysis (PCA). This method performs a linear
+transformation of the data, such that a set of variables (genes) are turned into
+new variables called Principal Components (PCs).
+These principal components combine information across several genes in a way
+that best captures the variability observed across samples (cells).
+
+Watch the video linked below for more details of how PCA works: 
+
+<a href="https://www.youtube.com/embed/FgakZw6K1QQ" target="_blank">
+<img src="https://img.youtube.com/vi/FgakZw6K1QQ/0.jpg" alt="StatQuest: PCA" height="200">
+</a>
+
+After performing a PCA, there is no data loss, i.e. the total number of
+variables does not change. Only the fraction of variance captured by each
+variable differs.
+
+Each PC represents a dimension in the new expression space.
+The first PC explains the highest proportion of variance possible.
+The second PC explains the highest proportion of variance not explained by the
+first PC.
+And so on: successive PCs each explain a decreasing amount of variance not
+captured by the previous ones.
+
+The advantage of using PCA is that the total amount of variance explained by the
+first few PCs is usually enough to capture most of the signal in the data.
+Therefore, we can exclude the remaining PCs without much loss of information.
+The stronger the correlation between the initial variables, the stronger the
+reduction in dimensionality. We will see below how we can choose how many PCs to
+retain for our downstream analysis.
+
+### Running PCA
+
+As discussed in the [Preprocessing and QC](04_Preprocessing_And_QC.html)
+section, _Seurat_ objects contain a _slot_ that can store
+representations of our data in reduced dimensions. This is useful as we can keep
+all the information about our single-cell data within a single object.
+
+The `RunPCA()` function can be used to run PCA on a seurat object, and returns an
+updated version of the single cell object with the PCA result added to the
+`reductions` slot.
+
+Importantly, we can also restrict the PCA to use only some of the features in the object, which in this case we do by using the highly variable
+genes we identified earlier.
+
+```{r run_pca }
+seurat_object <- RunPCA(seurat_object, features = VariableFeatures(object = seurat_object))
+```
+
+Running this function will add a new slot to our seurat object called `pca` which contains the PCA representation of our data. This can be accessed using the `Reductions()` function.
+
+```{r check_pca}
+Reductions(seurat_object)
+```
+One of the first things to investigate after doing a PCA is how much variance is
+explained by each PC. The typical way to
+view this information is using what is known as a "scree plot". In Seurat the function is called `ElbowPlot()`, and it plots the standard deviation of each PC, which is a measure of how much variance is explained by that PC. The more variance explained, the more important that PC is for representing the data. We can use this plot to decide how many PCs to retain for downstream analysis.
+
+```{r scree_plot}
+ElbowPlot(seurat_object, ndims = 50)
+```
+
+
+We can see how the two first PCs explain a substantial amount of the variance,
+and very little variation is explained beyond 10-15 PCs.
+
+To visualise our cells in the reduced dimension space defined by PC1 and PC2, we
+can use the `DimPlot()` function.
+
+```{r plotPCA}
+DimPlot(seurat_object, reduction = "pca") 
+```
+
+The proximity of cells in this plot reflects the similarity of their expression
+profiles.
