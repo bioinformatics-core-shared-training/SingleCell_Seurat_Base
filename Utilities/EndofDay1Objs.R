@@ -68,4 +68,12 @@ saveRDS(seurat_object_filtered, file = "../RObjects/Filtered.full.rds")
 
 downsampled_seurat <- subset(seurat_object_filtered, downsample = 500)
 
+downsampled_seurat <- subset(downsampled_seurat, 
+                             features = rownames(downsampled_seurat)[Matrix::rowSums(downsampled_seurat[["RNA"]]$counts) > 0])
+
 saveRDS(downsampled_seurat, file = "../RObjects/Filtered.500.rds")
+
+
+
+
+
