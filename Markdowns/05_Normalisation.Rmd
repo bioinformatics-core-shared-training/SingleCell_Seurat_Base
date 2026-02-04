@@ -1,0 +1,242 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+subtitle: Normalisation
+output:
+  html_document:
+    toc: yes
+    number_sections: true
+    code_folding: show 
+---
+
+# Normalisation
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(sctransform)
+library(glmGamPoi)
+library(ggplot2)
+library(tidyverse)
+set.seed = 123 
+```
+
+Normalisation is a crucial step in single-cell RNA-seq data analysis. It aims to remove technical variations while preserving biological differences between cells. Various methods exist for normalising single-cell RNA-seq data, each with its own advantages and disadvantages.
+
+## Load data object
+
+For the purposes of this demonstration we have generated a smaller data set in
+which there are only 500 cells per sample. This is so that the code can be run
+in a reasonable amount of time during the live teaching session. The data were
+first QC'd and filtered as described in the [QC and exploratory analysis 
+session](04_Preprocessing_And_QC.html) using thresholds set on a per sample basis. After this 500 cells were selected at
+random from each sample.
+
+```{r load_data}
+seurat_object <- readRDS("../RObjects/Filtered.500.rds")
+seurat_object
+```
+
+## Learning objectives
+
+* Understand why normalisation is required
+* Understand concepts of two normalisation methods
+  * deconvolution
+  * sctransform 
+  
+## Why normalise?
+
+```{r norm_intro_plots}
+oneSamTab <- seurat_object@meta.data %>% 
+  filter(orig.ident == "PBMMC-1") %>% 
+  rownames_to_column("Cell") %>%
+  dplyr::select(orig.ident,Cell, nCount_RNA) %>% 
+  mutate(cell_num = 1:n())
+
+p_before_nom <- ggplot(data=oneSamTab, aes(x=cell_num, y=nCount_RNA)) +
+  geom_bar(stat = 'identity') +
+  labs( x= 'Cell Index',
+        y='Cell UMI counts',
+        title = "PBMMC_1: Before Normalization" ) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size=20, color = 'red')
+  )
+
+p_before_nom
+
+```  
+
+* Above plot shows the UMI counts/cell (transcript molecules) for 500 cell from the PBMMC_1 sample
+* UMI counts fluctuate
+* We derive biological insights downstream by comparing cells against each other.
+* But the UMI counts differences makes it harder to compare cells.
+
+* Why total transcript molecules (UMI counts) detected between cells differ?
+  * Biological:
+    * Cell sub type differences, like size and transcription activity etc.
+  * Technical: scRNA data is inherently noisy
+    * Low mRNA content per cell
+    * cell-to-cell differences in mRNA capture efficiency
+    * Variable sequencing depth
+    * PCR amplification efficiency
+
+* A normalization technique makes the UMI counts distribution uniform, so that each cell has similar counts.
+* Normalization is a critical step that corrects cell-to-cell technical differences.
+* By normalizing, downstream comparisons of relative expression between cells are valid.
+
+## Normalization strategies
+
+The sparse nature of scRNA data makes normalization difficult, unlike bulk RNAseq data.
+
+* Broadly two classes
+
+  1. Spike-in methods
+      * Uses spike-in controls for normalisation
+      * Not available for droplet based scRNA techniques like 10x.
+      
+  2.  Non-spike-in methods: 
+      * Using available counts data for normalization
+      * DEseq2
+      * edgeR - TMM
+      * Library size normalization
+      * deconvolution
+      * sctransform 
+    
+* Typical normalization has two steps
+  1. scaling
+      * Estimate size or scaling or normalization factor: computation of a cell-specific 'scaling' or 'size' factor or “normalization factor” that represents the relative bias in
+that cell and division of all counts for the cell by that factor to remove that
+bias. Assumption: any cell specific bias will affect genes the same way.
+      * Scale the data by dividing the count for each gene with the appropriate size factor for that cell
+  2. Transformation
+      * log2
+      * Square root transformation
+      * Pearson residuals (eg. sctransform)
+    
+
+Scaling methods typically generate normalised counts-per-million (CPM) or
+transcripts-per-million (TPM) values that address the effect of sequencing
+depth. These values however typically have a variance that increases with their
+mean (heteroscedasticity) while most statistical methods assume a stable
+variance, which does not vary with the mean (homoscedasticity). A widely used
+'variance stabilising transformation' is the log transformation (often log2).
+This works well for highly expressed genes (as in bulk RNA-seq) but less so for
+sparse scRNA-seq data.
+
+
+![DESeq,edgeR and Library size normalizations](./Images/size_factors_plot.png)
+
+
+* DEseq, edgeR-TMM and Library size normalization initially developed for bulk RNAseq
+* Applying these methods on scRNAseq data systematically under or over estimate size factors. i.e systematically deviate from true size factors.
+* This deviation is the result of removing zeroes prior to normalization. 
+* Therefore other normalization methods specific to scRNAseq data like deconvolution, sctransform etc. were proposed.
+ 
+
+## Deconvolution
+
+Because single-cell data tend to have a substantial number of low and zero counts, these bulk normalization methods may be problematic for single-cell data. 
+
+* Deconvolution aims to normalize expression values based on summed values from pools of cells.
+* Since cell summation results in fewer zeros, the ensuing normalization is less susceptible to errors than existing methods. 
+* The estimated size factors are only relevant to the pools of cells, even though normalization accuracy has improved. 
+* Each pool's size factor is deconvolved into its constituent cells' size factors.
+
+
+![](Images/scran_Fig3.png){width=70%}
+
+Normalisation by deconvolution is not supported inside Seurat but we can use some of the bioconductor functions on our counts matrix and import it back into our Seurat object. 
+
+In order to avoid pooling cells with radically different transcriptomic
+profiles, the cells are first clustered based on gene expression. The pools are
+then formed exclusively with each cluster. Size factors are calculated within
+each cluster and are then scaled so they are comparable across clusters.
+
+### Cluster cells
+
+The table below show the number and size of clusters found:
+
+```{r quickCluster, message=FALSE, warning=FALSE}
+raw_counts <- seurat_object@assays$RNA$counts
+
+library(scran)
+
+set.seed(100)
+clust <- quickCluster(raw_counts)
+table(clust)
+```
+
+### Compute size factors
+
+```{r calculate_sum_factors}
+size_factors <- pooledSizeFactors(raw_counts,
+			 clusters = clust,
+			 min.mean = 0.1)
+
+summary(size_factors)
+```
+
+Note: *min.mean* - A numeric scalar specifying the minimum (library
+size-adjusted) average count of genes to be used for normalization. This means
+large numbers of very lowly expressed genes will not bias the normalization.
+
+
+### Apply size factors
+
+For each cell, raw counts for genes are divided by the size factor for that cell
+and log-transformed so downstream analyses focus on genes with strong relative
+differences.
+
+```{r log_norm_counts}
+# need to divide every count by the size factor for that row/cell then log transform
+
+```
+### Explore the effect of normalisation
+
+
+Normalised counts are much less variable across cells than raw counts
+```{r norm_compare_plots}
+# plot that compares the normalised by deconvolution to the raw counts plot above
+
+``` 
+
+## Exercise
+
+Apply the deconvolution normalisation on a single sample: ETV6-RUNX1_1.
+
+First it is necessary to select only cells that came from the sample 
+'ETV6-RUNX1_1'. You can then apply the normalization by deconvolution by clustering the cells, computing size factors and using these to log-normalize the counts.
+
+```{r subset}
+# Subset the seurat object to only include cells from ETV6-RUNX1_1 sample
+etv6_object <- subset(seurat_object, subset = orig.ident == "ETV6RUNX1-1")
+```
+
+# sctransform: Variant Stabilising Transformation
+
+The standard normalization method in Seurat is a global-scaling normalization method, which transforms the feature counts for each cell by dividing by the total counts of the cell and multiplying by a scale factor (default = 10000) and then applying a natural log with a pseudocount of 1. Global-scaling methods rely on an assumption that each cell originally contains the same number of RNA molecules. 
+
+With scaling normalisations a correlation remains between the mean and variation
+of expression (heteroskedasticity). This affects downstream dimensionality
+reduction as the few main new dimensions are usually correlated with library
+size. `sctransform` addresses the issue by regressing library size out of raw
+counts and providing residuals to use as normalized and variance-stabilized
+expression values in some downstream analyses, such as dimensionality reduction. The idea is to assign greater weight to lowly expressed genes that may exhibit cell type specific expression rather than highly expressed genes with broad expression.
+
+!["Effect of scaling normalization"](Images/total_UMI_counts_vs_gene_UMI_counts.png)
+
+Transformed data will be available in the SCT assay, which is set as the default assay after running sctransform. During normalization, we can also remove confounding sources of variation, for example, mitochondrial mapping percentage. If you think think differences in mitochondrial gene expression are related to biology in your data, you may not want to do this, as it could help with clustering downstream.
+
+```{r sctransform}
+seurat_object <- SCTransform(seurat_object, vars.to.regress = "percent.mt", verbose = FALSE)
+```
+### Explore the effect of sctransform normalisation
+
+```{r sctransform_plots}
+# plot that compares the sctransform normalised to the raw counts plot above
+
+```
+
+```{r session}
+sessionInfo()
+```
