@@ -495,27 +495,28 @@ pre code {
 <p>You can find these reference files in the directory <code>Data/references</code>.</p>
 <p>To index our genome, we can use the <code>cellranger mkref</code> tool with the following arguments (replacing <code>{...}</code> with the relevant piece of information):</p>
 <pre class="bash"><code>cellranger mkref \
-  --fasta={GENOME FASTA} \
-  --genes={ANNOTATION GTF} \
-  --genome={OUTPUT FOLDER FOR INDEX} \
-  --nthreads={CPUS}</code></pre>
+  --fasta &quot;PATH TO GENOME FASTA FILE&quot; \
+  --genes &quot;PATH TO ANNOTATION GTF FILE&quot; \
+  --genome &quot;NAME FOR OUTPUT FOLDER&quot; \
+  --nthreads &quot;NUMBER OF CPUS&quot;</code></pre>
 <p>where:</p>
 <ul>
-<li><code>GENOME FASTA</code> is a file containing the reference genome in FASTA format<br />
+<li><code>--fasta</code> is the path to a file containing the reference genome in FASTA format<br />
 </li>
-<li><code>ANNOTATION GTF</code> is a file containing the transcript annotation file in GTF format<br />
-</li>
-<li><code>OUTPUT FOLDER FOR INDEX</code> is a name for the output folder containing the new reference package (you do not need to create this folder)<br />
-</li>
-<li><code>CPUS</code> - Is the number of CPUs we would like CellRanger to use. The more CPUs CellRanger can use, the faster the job (up to a point).</li>
+<li><code>--genes</code> is the path to a file containing the transcript annotation file in GTF format</li>
+<li><code>--genome</code> is a name for the output folder where cellranger will save the genome index (you do not need to create this folder)</li>
+<li><code>--nthreads</code> is the number of CPUs CellRanger can use, which may speed the indexing (up to a point).</li>
 </ul>
 <p>One thing of note is that <code>mkref</code> does not work with files compressed with <code>gzip</code> (the format that Ensembl provides them as). Therefore, make sure to decompress the files first (you can do this using the <code>gunzip file.gz</code> command).</p>
 <div class="exercise">
-<p>Open Visual Studio Code and create a shell script named <code>01_prepare_reference.sh</code> to index the reference genome for Cell Ranger.</p>
-<p>You’ll need to give CellRanger the names of the two reference files in <code>Data/references</code>.</p>
-<p>The output from <code>mkref</code> should be named <code>GRCh38_index</code>.</p>
-<p>You should tell CellRanger to use 7 CPUs.</p>
-<p>The start of the script is given here, so you can copy this to a new file and work from there. You’ll need to replace the <strong>&lt;&lt;_YOUR_CODE_HERE_&gt;&gt;</strong> with the necessary arguments for the <code>cellranger mkref</code> command.</p>
+<p>In this exercise we will prepare a reference for Cell Ranger using the <code>mkref</code> tool. We index chromosome 21 of the human genome, which is sufficient for the purposes of demonstrating how this step works. In a real-life scenario you would index the full genome.</p>
+<p>Open a text editor (e.g. Visual Studio Code from the toolbar or <code>nano</code> from the terminal) and create a shell script named <code>01_prepare_reference.sh</code> to index the reference genome for Cell Ranger.</p>
+<ul>
+<li>You’ll need to give CellRanger the path to the reference genome and gene annotation files found in <code>Data/references</code>.</li>
+<li>Set the output genome index as <code>GRCh38_chr21_index</code>.</li>
+<li>Use 7 CPUs for the indexing.</li>
+</ul>
+<p>The start of the script is given here, so you can copy this to a new file and work from there. You’ll need to replace the <strong>“YOUR CODE HERE”</strong> with the necessary arguments for the <code>cellranger mkref</code> command.</p>
 <pre class="bash"><code>#!/bin/bash
 
 # change to directory with the FASTA and GTF files
@@ -523,10 +524,10 @@ cd Data/references/
 
 # run mkref
 cellranger mkref\
-  --fasta=&lt;&lt;_YOUR_CODE_HERE_&gt;&gt; \
-  --genes=&lt;&lt;_YOUR_CODE_HERE_&gt;&gt; \
-  --genome=&lt;&lt;_YOUR_CODE_HERE_&gt;&gt; \
-  --nthreads=&lt;&lt;_YOUR_CODE_HERE_&gt;&gt;</code></pre>
+  --fasta &quot;YOUR CODE HERE&quot; \
+  --genes &quot;YOUR CODE HERE&quot; \
+  --genome &quot;YOUR CODE HERE&quot; \
+  --nthreads &quot;YOUR CODE HERE&quot;</code></pre>
 <p>Run your script from the terminal using <code>bash</code> (make sure you’re running it from the <code>~/Course_Materials</code> directory).</p>
 <details>
 <p><summary>Answer</summary></p>
@@ -538,12 +539,12 @@ cd Data/references/
 
 # run mkref
 cellranger mkref \
-  --fasta=Homo_sapiens.GRCh38.dna.chromosome.21.fa \
-  --genes=gencode.v41.primary_assembly.annotation.chr21.gtf \
-  --genome=GRCh38_index \
-  --nthreads=7</code></pre>
-<p>If we save this script in our <code>scripts</code> folder as <code>01-prepare_reference.sh</code>, we could then run it from the terminal with:</p>
-<pre class="console"><code>$ bash 01_prepare_reference.sh</code></pre>
+  --fasta &quot;Homo_sapiens.GRCh38.dna.chromosome.21.fa&quot; \
+  --genes &quot;gencode.v41.primary_assembly.annotation.chr21.gtf&quot; \
+  --genome &quot;GRCh38_chr21_index&quot; \
+  --nthreads &quot;7&quot;</code></pre>
+<p>Once ready, we can run our script from the terminal with:</p>
+<pre class="console"><code>bash 01_prepare_reference.sh</code></pre>
 </details>
 </div>
 </div>
@@ -588,12 +589,13 @@ cellranger mkref \
 <li><strong>--localmem</strong> - the amount of memory, in Gigabytes, Cell Ranger should use.</li>
 </ul>
 <p>A complete command for processing on of the Caron samples might be:</p>
-<pre><code>cellranger count --id={OUTPUT_SAMPLE_NAME} \
-                 --transcriptome={DIRECTORY_WITH_REFERENCE} \
-                 --fastqs={DIRECTORY_WITH_FASTQ_FILES} \
-                 --sample={NAME_OF_SAMPLE_IN_FASTQ_FILES} \
-                 --localcores={NUMBER_OF_CPUS} \
-                 --localmem={RAM_MEMORY}</code></pre>
+<pre><code>cellranger count --id &quot;OUTPUT_SAMPLE_NAME&quot; \
+                 --transcriptome &quot;DIRECTORY_WITH_REFERENCE_INDEX&quot; \
+                 --fastqs &quot;DIRECTORY_WITH_FASTQ_FILES&quot; \
+                 --sample &quot;NAME_OF_SAMPLE_IN_FASTQ_FILES&quot; \
+                 --create-bam &quot;true OR false&quot; \
+                 --localcores &quot;NUMBER_OF_CPUS&quot; \
+                 --localmem &quot;RAM_MEMORY&quot;</code></pre>
 <div class="exercise">
 <p>Open Visual Studio Code and create a shell script named <code>02_cellranger_count.sh</code> to obtain gene counts per cell for one of our samples. Our FASTQ files are named with the “SRR9264343” prefix, which corresponds to one of the replicates from a “ETV6_RUNX1” cancer subtype, and are located in <code>Data/fastq</code>.</p>
 <ul>
@@ -614,12 +616,13 @@ cellranger count &lt;&lt;_YOUR_CODE_HERE_&gt;&gt;</code></pre>
 <p><summary>Hint</summary></p>
 <p>Here is a bit more detail about writing the <code>cellranger count</code> command:</p>
 <pre class="bash"><code>cellranger count \
-  --id=&lt;&lt;_OUTPUT_SAMPLE_NAME_&gt;&gt; \
-  --transcriptome=Data/references/GRCh38_index \
-  --fastqs=&lt;&lt;_DIRECTORY_WITH_FASTQ_FILES_&gt;&gt; \
-  --sample=&lt;&lt;_NAME_OF_SAMPLE_IN_FASTQ_FILES_&gt;&gt; \
-  --localcores=8 \
-  --localmem=24</code></pre>
+  --id &quot;OUTPUT_SAMPLE_NAME&quot; \
+  --transcriptome &quot;Data/references/GRCh38_chr21_index&quot; \
+  --fastqs &quot;DIRECTORY_WITH_FASTQ_FILES&quot; \
+  --sample &quot;NAME_OF_SAMPLE_IN_FASTQ_FILES&quot; \
+  --create-bam &quot;false&quot; \
+  --localcores &quot;7&quot; \
+  --localmem &quot;24&quot;</code></pre>
 <p>Note that we have to write the paths relative to the results folder we create within the script. See the example above for the <code>--transcriptome</code> option and see if you can adapt it also for specifying the path to the FASTQ folder.</p>
 </details>
 <details>
@@ -629,14 +632,15 @@ cellranger count &lt;&lt;_YOUR_CODE_HERE_&gt;&gt;</code></pre>
 
 # run cellranger count (maximum CPUs 8; maximum RAM 24GB)
 cellranger count \
-  --id=ETV6_RUNX1_rep1 \
-  --transcriptome=Data/references/GRCh38_index \
-  --fastqs=Data/fastq/ \
-  --sample=SRR9264343 \
-  --localcores=8 \
-  --localmem=24</code></pre>
-<p>If we save this script in our <code>scripts</code> folder as <code>02-cellranger.sh</code>, we could then run it from the terminal with:</p>
-<pre class="console"><code>$ bash 02_cellranger_count.sh</code></pre>
+  --id &quot;ETV6_RUNX1_rep1&quot; \
+  --transcriptome &quot;Data/references/GRCh38_chr21_index&quot; \
+  --fastqs &quot;Data/fastq/&quot; \
+  --sample &quot;SRR9264343&quot; \
+  --create-bam &quot;false&quot; \
+  --localcores &quot;7&quot; \
+  --localmem &quot;24&quot;</code></pre>
+<p>We can run the script from the terminal with:</p>
+<pre class="console"><code>bash 02_cellranger_count.sh</code></pre>
 </details>
 </div>
 </div>

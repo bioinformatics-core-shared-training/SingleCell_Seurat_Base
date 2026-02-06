@@ -9,7 +9,9 @@ output:
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(echo=FALSE)
+knitr::opts_chunk$set(echo = FALSE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
 ```
 
 # Introduction
@@ -109,20 +111,18 @@ arguments (replacing `{...}` with the relevant piece of information):
 
 ```bash
 cellranger mkref \
-  --fasta={GENOME FASTA} \
-  --genes={ANNOTATION GTF} \
-  --genome={OUTPUT FOLDER FOR INDEX} \
-  --nthreads={CPUS}
+  --fasta "PATH TO GENOME FASTA FILE" \
+  --genes "PATH TO ANNOTATION GTF FILE" \
+  --genome "NAME FOR OUTPUT FOLDER" \
+  --nthreads "NUMBER OF CPUS"
 ```
 
 where:
 
-* `GENOME FASTA` is a file containing the reference genome in FASTA format   
-* `ANNOTATION GTF` is a file containing the transcript annotation file in GTF format   
-* `OUTPUT FOLDER FOR INDEX` is a name for the output folder containing the new
-reference package (you do not need to create this folder)  
-* `CPUS` - Is the number of CPUs we would like CellRanger to use. The more CPUs
-CellRanger can use, the faster the job (up to a point).
+* `--fasta` is the path to a file containing the reference genome in FASTA format   
+* `--genes` is the path to a file containing the transcript annotation file in GTF format
+* `--genome` is a name for the output folder where cellranger will save the genome index (you do not need to create this folder)
+* `--nthreads` is the number of CPUs CellRanger can use, which may speed the indexing (up to a point).
 
 One thing of note is that `mkref` does not work with files compressed with
 `gzip` (the format that Ensembl provides them as). Therefore, make sure to
@@ -130,19 +130,18 @@ decompress the files first (you can do this using the `gunzip file.gz` command).
 
 :::exercise 
 
-Open Visual Studio Code and create a shell script named
-`01_prepare_reference.sh` to index the reference genome for Cell Ranger. 
+In this exercise we will prepare a reference for Cell Ranger using the `mkref` tool.
+We index chromosome 21 of the human genome, which is sufficient for the purposes of demonstrating how this step works. 
+In a real-life scenario you would index the full genome.
 
-You'll need to give CellRanger the names of the two reference files in 
-`Data/references`. 
+Open a text editor (e.g. Visual Studio Code from the toolbar or `nano` from the terminal) and create a shell script named `01_prepare_reference.sh` to index the reference genome for Cell Ranger. 
 
-The output from `mkref` should be named `GRCh38_index`.
+- You'll need to give CellRanger the path to the reference genome and gene annotation files found in `Data/references`. 
+- Set the output genome index as `GRCh38_chr21_index`.
+- Use 7 CPUs for the indexing.
 
-You should tell CellRanger to use 7 CPUs.
-
-The start of the script is given here, so you can copy this to a new file
-and work from there. You'll need to replace the **<<\_YOUR\_CODE\_HERE\_>>**
-with the necessary arguments for the `cellranger mkref` command.
+The start of the script is given here, so you can copy this to a new file and work from there. 
+You'll need to replace the **"YOUR CODE HERE"** with the necessary arguments for the `cellranger mkref` command.
 
 ```bash
 #!/bin/bash
@@ -152,10 +151,10 @@ cd Data/references/
 
 # run mkref
 cellranger mkref\
-  --fasta=<<_YOUR_CODE_HERE_>> \
-  --genes=<<_YOUR_CODE_HERE_>> \
-  --genome=<<_YOUR_CODE_HERE_>> \
-  --nthreads=<<_YOUR_CODE_HERE_>>
+  --fasta "YOUR CODE HERE" \
+  --genes "YOUR CODE HERE" \
+  --genome "YOUR CODE HERE" \
+  --nthreads "YOUR CODE HERE"
 ```
 
 Run your script from the terminal using `bash` (make sure you're running it from
@@ -173,17 +172,16 @@ cd Data/references/
 
 # run mkref
 cellranger mkref \
-  --fasta=Homo_sapiens.GRCh38.dna.chromosome.21.fa \
-  --genes=gencode.v41.primary_assembly.annotation.chr21.gtf \
-  --genome=GRCh38_index \
-  --nthreads=7
+  --fasta "Homo_sapiens.GRCh38.dna.chromosome.21.fa" \
+  --genes "gencode.v41.primary_assembly.annotation.chr21.gtf" \
+  --genome "GRCh38_chr21_index" \
+  --nthreads "7"
 ```
 
-If we save this script in our `scripts` folder as `01-prepare_reference.sh`, we
-could then run it from the terminal with:
+Once ready, we can run our script from the terminal with:
 
 ```console
-$ bash 01_prepare_reference.sh
+bash 01_prepare_reference.sh
 ```
 
 </details>
@@ -260,12 +258,13 @@ set limits to the resources it will use:
 A complete command for processing on of the Caron samples might be:
 
 ```
-cellranger count --id={OUTPUT_SAMPLE_NAME} \
-                 --transcriptome={DIRECTORY_WITH_REFERENCE} \
-                 --fastqs={DIRECTORY_WITH_FASTQ_FILES} \
-                 --sample={NAME_OF_SAMPLE_IN_FASTQ_FILES} \
-                 --localcores={NUMBER_OF_CPUS} \
-                 --localmem={RAM_MEMORY}
+cellranger count --id "OUTPUT_SAMPLE_NAME" \
+                 --transcriptome "DIRECTORY_WITH_REFERENCE_INDEX" \
+                 --fastqs "DIRECTORY_WITH_FASTQ_FILES" \
+                 --sample "NAME_OF_SAMPLE_IN_FASTQ_FILES" \
+                 --create-bam "true OR false" \
+                 --localcores "NUMBER_OF_CPUS" \
+                 --localmem "RAM_MEMORY"
 ```
 
 :::exercise 
@@ -279,8 +278,7 @@ with the "SRR9264343" prefix, which corresponds to one of the replicates from a
 Ranger name the output directory "ETV6_RUNX1_rep1".
 * You will also need to give Cell Ranger the path to the cell_ranger index that
 we just generated.
-  * **Note**: If you didn't complete the previous exercise, you can use a pre-processed 
-genome index provided in `Data/references/cellranger_index`.
+  * **Note**: If you didn't complete the previous exercise, you can use a pre-processed genome index provided in `Data/references/cellranger_index`.
 * Finally, set the number of cores for Cell Ranger to use to `7` and the local 
 memory limit to `24` (Gb).
 
@@ -302,12 +300,13 @@ Here is a bit more detail about writing the `cellranger count` command:
 
 ```bash
 cellranger count \
-  --id=<<_OUTPUT_SAMPLE_NAME_>> \
-  --transcriptome=Data/references/GRCh38_index \
-  --fastqs=<<_DIRECTORY_WITH_FASTQ_FILES_>> \
-  --sample=<<_NAME_OF_SAMPLE_IN_FASTQ_FILES_>> \
-  --localcores=8 \
-  --localmem=24
+  --id "OUTPUT_SAMPLE_NAME" \
+  --transcriptome "Data/references/GRCh38_chr21_index" \
+  --fastqs "DIRECTORY_WITH_FASTQ_FILES" \
+  --sample "NAME_OF_SAMPLE_IN_FASTQ_FILES" \
+  --create-bam "false" \
+  --localcores "7" \
+  --localmem "24"
 ```
 
 Note that we have to write the paths relative to the results folder we create within the script. 
@@ -324,18 +323,19 @@ The complete script would be:
 
 # run cellranger count (maximum CPUs 8; maximum RAM 24GB)
 cellranger count \
-  --id=ETV6_RUNX1_rep1 \
-  --transcriptome=Data/references/GRCh38_index \
-  --fastqs=Data/fastq/ \
-  --sample=SRR9264343 \
-  --localcores=8 \
-  --localmem=24
+  --id "ETV6_RUNX1_rep1" \
+  --transcriptome "Data/references/GRCh38_chr21_index" \
+  --fastqs "Data/fastq/" \
+  --sample "SRR9264343" \
+  --create-bam "false" \
+  --localcores "7" \
+  --localmem "24"
 ```
 
-If we save this script in our `scripts` folder as `02-cellranger.sh`, we could then run it from the terminal with:
+We can run the script from the terminal with:
 
 ```console
-$ bash 02_cellranger_count.sh
+bash 02_cellranger_count.sh
 ```
 
 </details>
@@ -355,13 +355,13 @@ files/directories that will not be of immediate interest.
 The contents of the sample directory will look like this:
 
 ```{r outputDir, fig.align='center', out.width="50%"}
-knitr::include_graphics("Images/CellRangerOutput.png")
+knitr::include_graphics("../Images/CellRangerOutput.png")
 ```
 
 The contents of the `outs` directory are:
 
 ```{r outputDirOuts, fig.align='center', out.width="50%"}
-knitr::include_graphics("Images/CellRangerOutputOuts.png")
+knitr::include_graphics("../Images/CellRangerOutputOuts.png")
 ```
 
 * **analysis** - The results of clustering and differential expression analysis
@@ -418,7 +418,7 @@ visualization and analysis platform that allows you to extensively explore your
 data with a point and click interface.
 
 ```{r LoupeBrowser, fig.align='center', out.width="75%"}
-knitr::include_graphics("Images/LoupeBrowser.png")
+knitr::include_graphics("../Images/LoupeBrowser.png")
 ```
 
 The browser will allow you, for example, to find cells of interest through
@@ -479,7 +479,7 @@ on [the 10x Cell Ranger pages](https://support.10xgenomics.com/single-cell-gene-
 The plot below shows a "barcode rank plot". This is taken from the Cell Ranger
 `web_summary.html` report.
 
-![](Images/BarcodeRankPlot.png){width=50%}
+![](../Images/BarcodeRankPlot.png){width=50%}
 
 This plot shows the UMI counts for all droplets, the droplets have been ranked
 by UMI count and coloured according to whether they have been called as cells or
