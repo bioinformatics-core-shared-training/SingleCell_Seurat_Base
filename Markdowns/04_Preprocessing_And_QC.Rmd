@@ -1,31 +1,60 @@
 ---
 title: "Introduction to single-cell RNA-seq analysis"
-subtitle: 'Quality Control'
 output:
   html_document:
     toc: yes
+    toc_float: true
+    toc_depth: 3
     number_sections: true
-    code_folding: show 
+    pandoc_args: ["--number-offset", "3"] # TOC will start at 4
+    code_folding: show
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(Seurat)
-library(sctransform)
-library(ggplot2)
-library(tidyverse)
-set.seed = 123 
+# Quality Control and Filtering
+
+```{r setup, include=FALSE, purl=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
+set.seed(123)
 ```
 
 ## Libraries, parallelisation and seed setting
 
+We start our analysis by loading the libraries we will need for this practical. 
+We will be using `Seurat` for our analysis, `sctransform` for normalisation (coming later) and `tidyverse` for data manipulation and plotting.
+
+```{r load_libraries}
+# Load the libraries we will need for this practical
+library(Seurat)
+library(sctransform)
+library(tidyverse)
+```
+
 ### Load Single Sample
 
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### Load data for a single sample ####
+
+```
+
+Reading data into Seurat can be done in two steps: 
+
+- First, we read in the data using `Read10X()`, which reads in the count matrix and returns a list of matrices (one for each assay).
+- Then we create a Seurat object using `CreateSeuratObject()`, which takes the count matrix and creates a Seurat object that contains the data and metadata.
+
 ```{r load}
-ETV6_RUNX1_1.data <- Read10X(data.dir = "../Data/CellRanger_Outputs/SRR9264343/outs/filtered_feature_bc_matrix/")
+# Read 10x data matrices
+etv6_runx1_1_data <- Read10X(
+  data.dir = "Data/CellRanger_Outputs/SRR9264343/outs/filtered_feature_bc_matrix/"
+)
 
-ETV6_RUNX1_1 <- CreateSeuratObject(counts = ETV6_RUNX1_1.data, project = "ETV6_RUNX1_1")
-
+# Create Seurat object from the loaded matrices
+etv6_runx1_1 <- CreateSeuratObject(
+  counts = etv6_runx1_1_data,
+  project = "ETV6_RUNX1_1"
+)
 ```
 
 ### Seurat Object
@@ -34,11 +63,15 @@ https://satijalab.org/seurat/articles/essential_commands
 
 https://biostatsquid.com/seurat-objects-explained/
 
-```{r SeuratObj}
+```{r seurat_object}
+# Look at the structure of the Seurat object
+etv6_runx1_1
 
-head(ETV6_RUNX1_1@meta.data)
+# The metadata can be accessed with the @meta.data slot
+head(etv6_runx1_1@meta.data)
 
-ETV6_RUNX1_1@assays
+# The counts can be accessed with the @assays slot
+etv6_runx1_1@assays
 ```
 
 Being aware of the **active assay** is important when doing different types of analysis because tools will try to use the active assay by default if they can. 
@@ -46,50 +79,103 @@ Note that normally raw counts (the RNA assay) are used for differential expressi
 Conversely, normalised data is used to identify cell types e.g. in drawing UMAP plots.
 Here, we start by defining our default assay to the raw counts, using the `DefaultAssay()` function:
 
-
 ```{r DefaultAssay}
-DefaultAssay(ETV6_RUNX1_1) <- 'RNA'
-ETV6_RUNX1_1@active.assay
+# Set the default assay to RNA (raw counts)
+DefaultAssay(etv6_runx1_1) <- "RNA"
+
+# Check the active assay was set correctly
+etv6_runx1_1@active.assay
+```
+
+For convenience, we pull the raw counts matrix for the RNA assay out of the Seurat object and into a separate variable for exploratory analysis and QC. 
+This is not strictly necessary but it can be easier to work with the raw counts matrix directly for some of these steps.
+
+```{r raw_counts}
+# Pull out the raw counts matrix for the RNA assay for exploratory analysis and QC
+raw_counts <- etv6_runx1_1@assays$RNA$counts
 ```
 
 ## Properties of Single cell data
 
 ### Number of genes detected per cell
 
-```{r genePerCell}
-genesPerCell <- colSums(ETV6_RUNX1_1@assays$RNA$counts > 0)
-plot(density(genesPerCell), main="", xlab="Genes per cell")
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### Genes detected per cell ####
+
+```
+
+```{r genes_per_cell}
+# Calculate the number of genes detected per cell
+genes_per_cell <- colSums(raw_counts > 0)
+
+# Plot the distribution of genes detected per cell
+plot(density(genes_per_cell),
+     main = "",
+     xlab = "Genes per cell")
 ```
 
 ### Total UMI for a gene versus the number of times detected
-If we compare the number of UMI’s assigned to an individual gene to the number of cells in which that gene is detected, we can see that highly expressed genes tend to be detected in a higher proportion of cells than lowly expressed genes.
 
-```{r expression_v_detected}
-
-plot(rowSums(ETV6_RUNX1_1@assays$RNA$counts) / (rowSums(ETV6_RUNX1_1@assays$RNA$counts) > 0),
-     rowMeans(ETV6_RUNX1_1@assays$RNA$counts > 0),
-     log = "x",
-     xlab="Mean UMIs per cell",
-     ylab="proportion of cells expressing the gene"
-)
-
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### Total UMIs vs detected cells ####
 
 ```
 
+
+If we compare the number of UMI's assigned to an individual gene to the number of cells in which that gene is detected, we can see that highly expressed genes tend to be detected in a higher proportion of cells than lowly expressed genes.
+
+```{r expression_vs_detected}
+# Calculate the mean UMIs per cell for each gene
+mean_umis_per_cell <- rowSums(raw_counts) / (rowSums(raw_counts) > 0)
+
+# Calculate the proportion of cells expressing each gene
+proportion_cells_expressing <- rowMeans(raw_counts > 0)
+
+# Plot the relationship between mean UMIs per cell and proportion of cells expressing the gene
+plot(
+  x = mean_umis_per_cell,
+  y = proportion_cells_expressing,
+  log = "x",
+  xlab = "Mean UMIs per cell",
+  ylab = "Proportion of cells expressing the gene"
+)
+```
+
 ### Distribution of counts for a gene across cells
+
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### Gene count distribution ####
+
+```
+
 We could also look at the distribution of counts for individual genes across all cells. The plot below shows this distribution for the top 20 genes detected.
 
-```{r gene_count_distribution}
-rel_expression <- t( t(ETV6_RUNX1_1@assays$RNA$counts) / colSums(ETV6_RUNX1_1@assays$RNA$counts)) * 100
+```{r gene_count_distribution, fig.height=6}
+# Calculate the relative expression of each gene in each cell
+rel_expression <- t(t(raw_counts) / colSums(raw_counts)) * 100
 
-most_expressed <- sort(rowSums( rel_expression ), decreasing = T)[20:1]
-plot_data <- as.matrix(t(rel_expression[names(most_expressed),]))
+# Get the 20 most expressed genes
+most_expressed <- sort(rowSums(rel_expression), decreasing = TRUE)[20:1]
 
-boxplot(plot_data, cex=0.1, las=1, xlab="% total count per cell", horizontal=TRUE)
+# Plot the distribution of relative expression for the top 20 genes
+plot_data <- as.matrix(t(rel_expression[names(most_expressed), ]))
+
+boxplot(plot_data, cex = 0.1, las = 1,
+        xlab = "% total count per cell",
+        horizontal = TRUE)
 ```
 
 
 ## Quality Control
+
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### Quality control filtering ####
+
+```
 
 The cell calling performed by CellRanger does not always retain only droplets
 containing cells. Poor-quality cells, or rather droplets, may be caused
@@ -136,7 +222,8 @@ on three characteristics:
 Another simple metric that we can quickly calculate is the **number of genes detected** in the whole dataset (i.e. those that are true for this statement):
 
 ```{r genes_detected}
-table(rowSums(ETV6_RUNX1_1@assays$RNA) > 0)
+# How many genes are detected in the whole dataset?
+table(rowSums(raw_counts) > 0)
 ```
 
 ### Mitochondrial Gene Content
@@ -145,12 +232,16 @@ To calculate the percentage of mitochondrial genes, we first need to identify wh
 This is probably not the case for your non-human species of interest, although for mouse it is usually 'Mt'. The [[ operator can add columns to object metadata. This is a good place to store QC information.
 
 ```{r mito_genes}
-mito.genes <- grep(pattern = "^MT-", x = rownames(ETV6_RUNX1_1@assays$RNA), value = TRUE)
-length(mito.genes)
+# Identify mitochondrial genes
+mito_genes <- grep(pattern = "^MT-",
+                   x = rownames(raw_counts), value = TRUE)
+length(mito_genes)
 
-ETV6_RUNX1_1[["percent.mt"]] <- PercentageFeatureSet(ETV6_RUNX1_1, pattern = "^MT-")
+# Calculate the percentage of UMIs mapped to mitochondrial genes and add this as a column to the metadata
+etv6_runx1_1[["percent.mt"]] <- PercentageFeatureSet(etv6_runx1_1,
+                                                     pattern = "^MT-")
 
-head(ETV6_RUNX1_1@meta.data, 5)
+head(etv6_runx1_1@meta.data)
 ```
 
 ### Visualize QC Metrics
@@ -158,236 +249,307 @@ head(ETV6_RUNX1_1@meta.data, 5)
 We can visualize some of these QC metrics using `VlnPlot()`, which produces violin plots. Here we will look at the number of features (genes), number of counts (UMIs) and percentage of mitochondrial genes.
 
 ```{r detected_genes}
-VlnPlot(ETV6_RUNX1_1, features = c("nFeature_RNA"), layer = "counts")
+# Distribution of number of genes detected per cell
+VlnPlot(etv6_runx1_1, features = c("nFeature_RNA"), layer = "counts")
 ```
 
 ```{r umi_counts}
-VlnPlot(ETV6_RUNX1_1, features = c("nCount_RNA"), layer = "counts")
+# Distribution of total UMI counts per cell
+VlnPlot(etv6_runx1_1, features = c("nCount_RNA"), layer = "counts")
 ```
 
 ```{r mito_percent}
-VlnPlot(ETV6_RUNX1_1, features = c("percent.mt"), layer = "counts")
-
+# Distribution of percentage of mitochondrial genes per cell
+VlnPlot(etv6_runx1_1, features = c("percent.mt"), layer = "counts")
 ```
 
-```{r QC_vlnplots}
-VlnPlot(ETV6_RUNX1_1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, layer = "counts")
+```{r qc_vlnplots}
+# Distribution of all three QC metrics together
+VlnPlot(etv6_runx1_1,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+        ncol = 3, layer = "counts")
 ```
-
-
 
 ## Loading Multiple Samples
+
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### Multiple samples ####
+
+```
 
 If you have multiple samples to load, the Read10X function can take a named list of directories as input, and it will read in each sample and combine them into a single expression matrix with sample-specific cell barcodes. Each cell barcode is modified with the sample name to ensure uniqueness in your dataset. 
 
 The function will make a column in the metadata called 'orig.ident' which contains the sample name for each cell. However it obtains this programmatically from the named vector. The default behaviour assumes names are sample_otherinfo. The separator can be set with `names.delim`. Warning: If your names do not follow this convention you may need to set this argument or you will end up with incomplete or nonsense samples in your object.
 
 ```{r dir_vector}
-sampleinfo <- read_tsv("../Data/sample_sheet.tsv")
-samples <- sampleinfo$Sample[c(1,5,7,9)]
-list_of_files <- str_c("../Data/CellRanger_Outputs/", 
-                       samples, 
-                       "/outs/filtered_feature_bc_matrix")
-names(list_of_files) <- sampleinfo$SampleName[c(1,5,7,9)]
-list_of_files
+# Read our sample information sheet
+sampleinfo <- read_tsv("Data/sample_sheet.tsv")
+
+# Create a named vector of directories for each sample
+# We work with a subset of samples for demonstration purposes
+samples <- sampleinfo$Sample[c(1, 5, 7, 9)]
+list_of_files <- file.path("Data/CellRanger_Outputs/",
+                           samples,
+                           "/outs/filtered_feature_bc_matrix")
+names(list_of_files) <- sampleinfo$SampleName[c(1, 5, 7, 9)]
 ```
 
 ```{r load_multiple}
+# Read in the cellranger matrices for all samples
 expression_matrix <- Read10X(data.dir = list_of_files)
-multi_seurat_object = CreateSeuratObject(counts = expression_matrix)
+
+# Create a new seurat object with the combined expression matrix
+multi_seurat_object <- CreateSeuratObject(counts = expression_matrix)
 multi_seurat_object
 ```
+
 ### Adding Sample Metadata
 
-Now we have our combined Seurat object we should add in some helpful metadata like which sample group or condition these samples belong to. Since we need the cell level information to do this the easiest way is to use the `orig.ident` column of the metadata which is where the sample name was stored when the object was made and then pass this back to the Seurat object metadata. Our sample names are structured in a way that makes this easy.
+Now we have our combined Seurat object we should add in some helpful metadata like which sample group or condition these samples belong to. 
+Since we need the cell level information to do this the easiest way is to use the `orig.ident` column of the metadata which is where the sample name was stored when the object was made and then pass this back to the Seurat object metadata. 
+Our sample names are structured in a way that makes this easy.
 
 ```{r add_metadata, warning=FALSE, message=FALSE}
-temp_meta.data <- multi_seurat_object@meta.data %>%
+# Pull out the metadata and add sample group and sample name information
+temp_metadata <- multi_seurat_object@meta.data %>%
+  # Add the cell barcodes as a column so we can pull them back in at the end
   rownames_to_column("Cell") %>%
-  separate(col = "orig.ident", into = c("SampleGroup"), sep = "-", remove = FALSE) %>%
+  # Extract the sample group information from the origin identifier
+  # The pattern "-.*" matches the first dash and everything after it
+  mutate(SampleGroup = str_remove(orig.ident, "-.*")) %>% 
+  # Add the sample name as a column
   mutate(SampleName = orig.ident) %>%
+  # Put the cell barcodes back as rownames
   column_to_rownames("Cell")
 
-multi_seurat_object@meta.data <- temp_meta.data
+# Add the modified metadata back to the Seurat object
+multi_seurat_object@meta.data <- temp_metadata
 ```
 
 ### Remove undetected genes
 
-The first thing we should do is filter out genes that haven't been detected in our experiment. This will reduce the size of the Seurat Object and make processing a little faster.
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### QC: remove undetected genes ####
+
+```
+
+The first thing we should do is filter out genes that haven't been detected in our experiment. 
+This will reduce the size of the Seurat Object and make processing a little faster.
 We can do this using the `rowSums()` function to calculate the total counts for each gene across all cells and all samples, and then filter out genes with zero counts.
 
 ```{r filter_undetected_genes}
+# How many genes are detected in the whole dataset?
 table(rowSums(multi_seurat_object@assays$RNA$counts) > 0)
 
-filtered_multi_seurat_object <- subset(multi_seurat_object, features = rownames(multi_seurat_object)[Matrix::rowSums(multi_seurat_object[["RNA"]]$counts) > 0])
+# Filter out genes that are not detected in any cell
+filtered_multi_seurat_object <- subset(
+  multi_seurat_object,
+  features = rownames(multi_seurat_object)[
+    Matrix::rowSums(multi_seurat_object[["RNA"]]$counts) > 0
+  ]
+)
 
+# Check how many genes are detected after filtering
 filtered_multi_seurat_object
 
+# Confirm all of these now have at least 1 count across all cells
 table(rowSums(filtered_multi_seurat_object@assays$RNA$counts) > 0)
-
 ```
 We don't actually need to do this explicitly. `CreateSeuratObject` has an argument called `min.cells`. The documentation states: "Include features detected in at least this many cells". so by changing this to `1` (default is 0) when we create the object at the start we don't need to worry about this step.
 
 ### Visualize QC Metrics for Multiple Samples
 
-We can visualize QC metrics for the merged samples using `VlnPlot()` again:
-
-```{r merged_qc_vlnplots}
-filtered_multi_seurat_object[["percent.mt"]] <- PercentageFeatureSet(filtered_multi_seurat_object, pattern = "^MT-")
-
-VlnPlot(filtered_multi_seurat_object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
-        ncol = 3, 
-        layer = "counts")
-
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### QC: visualising metrics ####
 
 ```
 
-The default plotting sytle of Seurat overlays the points on the violin. Sometimes this can obscure the distribution. To turn this off, we can set the `pt.size` parameter to `0`:
+We can visualize QC metrics for the merged samples using `VlnPlot()` again:
+
+```{r merged_qc_vlnplots}
+# Add the percentage of mitochondrial genes to the metadata
+filtered_multi_seurat_object[["percent.mt"]] <-
+  PercentageFeatureSet(filtered_multi_seurat_object, pattern = "^MT-")
+
+# Plot the distribution of QC metrics for the merged samples
+VlnPlot(filtered_multi_seurat_object,
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  ncol = 3,
+  layer = "counts"
+)
+```
+
+The default plotting sytle of Seurat overlays the points on the violin. 
+Sometimes this can obscure the distribution. 
+To turn this off, we can set the `pt.size` parameter to `0`:
 
 ```{r merged_qc_vlnplots_no_points}
-VlnPlot(filtered_multi_seurat_object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
-        ncol = 3, 
-        layer = "counts", 
-        pt.size=0)
+VlnPlot(
+  filtered_multi_seurat_object,
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  ncol = 3,
+  layer = "counts",
+  pt.size = 0
+)
 ```
 
 ### Filtering out low quality droplets
 
-One could use hard threshold for the library size, number of genes detected and mitochondrial content based on the distributions seen above. These would need vary across runs and the decision making process is somewhat arbitrary. For example, imagine if we decided all cells should have at least 500 genes detected. This example also shows how you can use the Seurat ggplot nature to build in colours for sample groups and lines to indicate thresholds.
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+#### QC: filtering low-quality droplets ####
+
+```
+
+One could use a hard threshold for the library size, number of genes detected and mitochondrial content based on the distributions seen above. 
+These would need vary across runs and the decision making process is somewhat arbitrary. 
+For example, imagine if we decided all cells should have at least 500 genes detected. 
+This example also shows how you can use the Seurat ggplot nature to add a line to indicate our thresholds.
 
 ```{r arbitary_thresholds}
-# pull out metadata
-metadata <- filtered_multi_seurat_object@meta.data
-# set colors
-colour_names<-setNames(rep(c("cyan3","darkgoldenrod1","blue","lightgreen")),
-                 levels(factor(metadata$SampleGroup))) 
-
 # Plot where we would set a threshold
-VlnPlot(filtered_multi_seurat_object, 
-        features = "nFeature_RNA", 
-        group.by="SampleGroup", 
-        layer = "counts",
-        pt.size = 0) +
-  scale_fill_manual(values=colour_names) +
-  geom_hline(yintercept=500,color="red")
+VlnPlot(
+  filtered_multi_seurat_object,
+  features = "nFeature_RNA",
+  group.by = "SampleGroup",
+  layer = "counts",
+  pt.size = 0
+) +
+  geom_hline(yintercept = 500, color = "red")
 ```
 
 It may therefore be preferable to rely on outlier detection to identify cells that markedly differ from most cells.
 
-We saw above that the distribution of the QC metrics is close to Normal. Hence, we can detect outliers using the median and the median absolute deviation (MAD) from the median (not the mean and the standard deviation which both are sensitive to outliers).
+We saw above that the distribution of the QC metrics is close to Normal. 
+Hence, we can detect outliers using the median and the median absolute deviation (MAD) from the median (not the mean and the standard deviation which both are sensitive to outliers).
 
-For a given metric, an outlier value is one that lies over some number of MADs away from the median. A cell will be excluded if it is an outlier in the part of the range to avoid, for example low gene counts, or high mitochondrial content. For a normal distribution, a threshold defined with a distance of 3 MADs from the median retains about 99% of values. For most experiments 2 or 3 MADs is a reasonable starting point.
+For a given metric, an outlier value is one that lies over some number of MADs away from the median. 
+A cell will be excluded if it is an outlier in the part of the range to avoid, for example low gene counts, or high mitochondrial content. 
+For a normal distribution, a threshold defined with a distance of 3 MADs from the median retains about 99% of values. 
+For most experiments 2 or 3 MADs is a reasonable starting point.
 
-The samples analysed here may have been processed in different batches leading to differences in the overall distribution of UMI counts, numbers of genes detected and mitochondrial content. Such differences would affect the adaptive thresholds discussed above - that is, as the distributions of the metrics differ, so we need to decide if threshold should be per batch, per sample or across all samples.
+The samples analysed here may have been processed in different batches leading to differences in the overall distribution of UMI counts, numbers of genes detected and mitochondrial content. 
+Such differences would affect the adaptive thresholds discussed above - that is, as the distributions of the metrics differ, so we need to decide if threshold should be per batch, per sample or across all samples.
 
-Because of the different layers, you will need to break down the object to apply different thresholds by group or sample. The easiest way to do this is to work with the metadata and use the cell barcodes for filtering with Seurat::subset(). The structure of the `Seurat` object means we have to do this on a per sample basis if we want to set thresholds at a per sample level. 
+Because of the different layers, we will need to break down the object to apply different thresholds by group or sample. 
+The easiest way to do this is to work with the metadata and use the cell barcodes for filtering with Seurat::subset(). 
 
-```{r filter_outliers}
-# Lets consider just one sample first
+Before generalising this filtering across all samples, let's look at a step-by-step example for one sample.
 
-E_cells <- metadata %>%
+```{r filter_one_sample}
+# Pull out the metadata for easier manipulation
+metadata <- filtered_multi_seurat_object@meta.data
+
+#### Example of how to filter for one sample ####
+
+# Subset the metadata for one of the samples
+e_cells <- metadata %>%
   filter(SampleName == "ETV6RUNX1-1")
 
-# How would we calculate the threshold for genes detected using 2 MADs below the median?
+# calculate the median and MAD for the number of genes detected in this sample
+feature_mad <- mad(e_cells$nFeature_RNA)
+feature_median <- median(e_cells$nFeature_RNA)
 
-E_mad <- mad(E_cells$nFeature_RNA) # 793.19
-E_median <- median(E_cells$nFeature_RNA) # 2576
+# set a threshold for the number of genes detected as 2 MADs below the median
+feature_threshold <- feature_median - 2 * feature_mad
 
-E_threshold <- E_median - 2 * E_mad # 989.62
- 
-#scuttle::isOutlier(E_cells$nFeature_RNA, nmads = 2, type = "lower", log = FALSE)
+# How many cells would this remove?
+length(e_cells$nFeature_RNA) # total cells
+sum(e_cells$nFeature_RNA > feature_threshold) # cells above threshold
 
-# How many cells would this remove? 
+# The same process can be repeated for the other metrics
+umi_threshold <- median(e_cells$nCount_RNA) - 2 * mad(e_cells$nCount_RNA)
+sum(e_cells$nCount_RNA > umi_threshold)
 
-length(E_cells$nFeature_RNA) # 3153
+# for mitochondrial content we want to set a threshold above the median
+mt_threshold <- median(e_cells$percent.mt) + 2 * mad(e_cells$percent.mt)
+sum(e_cells$percent.mt < mt_threshold)
 
-sum(E_cells$nFeature_RNA > E_threshold) # 2940
-
-# So it would remove 213 cells for low gene counts.
-
-umis <- median(E_cells$nCount_RNA) - 2 * mad(E_cells$nCount_RNA) # 229.76 
-sum(E_cells$nCount_RNA > umis) # 3153
-
-# removes no cells for library size
-
-mt <- median(E_cells$percent.mt) + 2 * mad(E_cells$percent.mt) # 7.78
-sum(E_cells$percent.mt < mt) # 2777
-
-# removes 376 cells for high mitochondrial content
-
-# plot with ggplot
-
-ggplot(E_cells, aes(x=nFeature_RNA, y=nCount_RNA, color=percent.mt)) +
+# visualise the thresholds on the plot
+ggplot(e_cells,
+       aes(x = nFeature_RNA,
+           y = nCount_RNA,
+           color = percent.mt)) +
   geom_point() +
-  geom_vline(xintercept = E_threshold, color="red") +
-  geom_hline(yintercept = umis, color="blue") +
+  geom_vline(xintercept = feature_threshold, color = "red") +
+  geom_hline(yintercept = umi_threshold, color = "blue") +
   scale_color_viridis_c() +
   theme_minimal() +
-  labs(title="QC Metrics for ETV6-RUNX1_1",
-       x="Number of Features (Genes) Detected",
-       y="Number of Counts (UMIs)",
-       color="Percent Mitochondrial")
+  labs(
+    title = "QC Metrics for ETV6-RUNX1_1",
+    x = "Number of Features (Genes) Detected",
+    y = "Number of Counts (UMIs)",
+    color = "Percent Mitochondrial"
+  )
 
-# Now we can apply all 3 filters together to get a vector of cell barcodes to keep for this sample
-
-E_keep_cells <- metadata %>%
-  filter(SampleName == "ETV6RUNX1-1") %>%
-  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA))) %>%
-  filter(nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA))) %>%
-  filter(percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
+# We cound apply all 3 filters together to get a vector of cell
+# barcodes to keep for this sample
+# using standard dplyr filtering and pulling out the cell barcodes
+e_keep_cells <- metadata %>%
   rownames_to_column("Cell") %>%
+  filter(SampleName == "ETV6RUNX1-1") %>%
+  filter(nFeature_RNA > feature_threshold,
+         nCount_RNA > umi_threshold,
+         percent.mt < mt_threshold) %>%
   pull(Cell)
 
+# check how many cells would be left for this sample
+length(e_keep_cells)
 ```
 
-We can repeat this process for each sample and combine the results to get a vector of cell barcodes to keep across all samples.
+So, this would leave us with `r length(e_keep_cells)` cells for this sample.
+
+We can generalise this process by using the `group_by()` function from `dplyr`, which will allow us to define median/MAD thresholds _per sample_. 
+Here is the combined code to do this for all samples, which you can use as a template for your own filtering:
 
 ```{r apply_filter_all_samples}
-H_keep_cells <- metadata %>%
-  filter(SampleName == "HHD-1") %>%
-  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA))) %>%
-  filter(nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA))) %>%
-  filter(percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
-  rownames_to_column("Cell") %>%
-  pull(Cell)
+#### Apply filtering across all samples ####
 
-PR_keep_cells <- metadata %>%
-  filter(SampleName == "PRET-1") %>%
-  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA))) %>%
-  filter(nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA))) %>%
-  filter(percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
-  rownames_to_column("Cell") %>%
-  pull(Cell)
+all_keep_cells <- metadata %>%
+  # Add the cell barcodes as a column so we can pull them back in at the end
+  rownames_to_column("cell") %>%
+  # Group by sample name to calculate thresholds per sample
+  group_by(SampleName) %>%
+  # Apply the filtering for each sample
+  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA)),
+         nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA)),
+         percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
+  # Pull out the cell barcodes for the cells that pass the filters
+  pull(cell)
 
-PB_keep_cells <- metadata %>%
-  filter(SampleName == "PBMMC-1") %>%
-  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA))) %>%
-  filter(nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA))) %>%
-  filter(percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
-  rownames_to_column("Cell") %>%
-  pull(Cell)
+# How many cells would be left after filtering?
+length(all_keep_cells)
 
-all_keep_cells <- c(E_keep_cells, H_keep_cells, PR_keep_cells, PB_keep_cells)
-
+# How many cells per sample
+table(metadata[all_keep_cells, "SampleName"])
 ```
 
-We then use this to subset our Seurat object to retain only the high-quality cells.
+We then use this vector of cell barcodes to subset our Seurat object to retain only the high-quality cells.
 
 ```{r subset_seurat_object}
-qc_seurat_object <- subset(filtered_multi_seurat_object, cells = all_keep_cells)
+qc_seurat_object <- subset(
+  filtered_multi_seurat_object,
+  cells = all_keep_cells
+)
 
-VlnPlot(qc_seurat_object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
-        ncol = 3, 
-        layer = "counts", 
-        pt.size=0)
+VlnPlot(qc_seurat_object,
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  ncol = 3,
+  layer = "counts",
+  pt.size = 0
+)
 ```
 
-```{r}
+
+----
+
+<details><summary>`sessionInfo()`</summary>
+
+```{r session_info, echo=FALSE}
 sessionInfo()
 ```
 
-
-
-
-
-
+</details>
