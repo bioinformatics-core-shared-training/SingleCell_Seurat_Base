@@ -16,6 +16,13 @@ names(list_of_files) <- sampleinfo$SampleName
 expression_matrix <- Read10X(data.dir = list_of_files)
 seurat_object = CreateSeuratObject(counts = expression_matrix, min.cells = 1)
 
+temp_metadata <- seurat_object@meta.data %>%
+  rownames_to_column("Cell") %>%
+  mutate(SampleGroup = str_remove(orig.ident, "-.*")) %>% 
+  mutate(SampleName = orig.ident) %>%
+  column_to_rownames("Cell")
+seurat_object@meta.data <- temp_metadata
+
 orig <- seurat_object
 
 seurat_object[["percent.mt"]] <- PercentageFeatureSet(seurat_object, pattern = "^MT-")

@@ -152,4 +152,21 @@ DimPlot(seurat_object, reduction = "pca")
 ```
 
 The proximity of cells in this plot reflects the similarity of their expression
-profiles.
+profiles. 
+
+We can also plot different PCs, using the `dims` option:
+
+```{r plotPCA_multiple}
+
+DimPlot(seurat_object, reduction = "pca", dims = c(2, 3))
+
+```
+
+We can also split the plot by different options using the `split.by` option. For example, we can split the plot by sample group.
+
+```{r plotPCA_split}
+
+DimPlot(seurat_object, reduction = "pca", split.by = "SampleGroup")
+
+```
+

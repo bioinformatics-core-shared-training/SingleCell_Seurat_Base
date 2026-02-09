@@ -13,12 +13,6 @@ output:
 
 # Quality Control and Filtering
 
-```{r setup, include=FALSE, purl=FALSE}
-knitr::opts_chunk$set(echo = TRUE,
-                      root.dir = here::here("course_files"))
-knitr::opts_knit$set(root.dir = here::here("course_files"))
-set.seed(123)
-```
 
 ## Libraries, parallelisation and seed setting
 
@@ -48,7 +42,7 @@ Reading data into Seurat can be done in two steps:
 ```{r load}
 # Read 10x data matrices
 etv6_runx1_1_data <- Read10X(
-  data.dir = "Data/CellRanger_Outputs/SRR9264343/outs/filtered_feature_bc_matrix/"
+    data.dir = "Data/CellRanger_Outputs/SRR9264343/outs/filtered_feature_bc_matrix/"
 )
 
 # Create Seurat object from the loaded matrices
@@ -56,13 +50,23 @@ etv6_runx1_1 <- CreateSeuratObject(
   counts = etv6_runx1_1_data,
   project = "ETV6_RUNX1_1"
 )
+
 ```
 
 ### Seurat Object
 
+The Seurat Object is a specific data structure that is designed to hold single-cell data and associated metadata all in one place. It is essentially a list of lists with different `slots` for different types of data. 
+
+![Seurat Object](../Images/SeuratObj.png)
+This website has a more detailed explanantion:
+https://biostatsquid.com/seurat-objects-explained/
+
+The Seurat documentation is on the Satija Lab website and contains a number of useful vignettes for running different types of experiments. The essential commands page is a good reference:
+
 https://satijalab.org/seurat/articles/essential_commands
 
-https://biostatsquid.com/seurat-objects-explained/
+The Seurat documentation is more focused on the practicalities of how to use the functions and is not always fully comprehensive on the theory, reasoning and workings of the individual functions. The OSCA book created for use with the Bioconductor single cell analysis packages can a good resource for these details as the workflow is essentially the same. It is a good practice to read through the documentation for each function you use in order to understand what it does and how it works. 
+
 
 ```{r seurat_object}
 # Look at the structure of the Seurat object
