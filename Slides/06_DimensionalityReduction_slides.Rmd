@@ -1,0 +1,244 @@
+---
+title: "Dimensionality Reduction"
+date: 'February 2026'
+output:
+  ioslides_presentation:
+    widescreen: true
+    smaller: true
+    logo: ../Images/uniOfCamCrukLogos.png
+    css: ../css/stylesheet.css
+---
+
+## Single Cell RNAseq Analysis Workflow
+
+```{r echo=FALSE, out.width='70%', fig.align='center'}
+knitr::include_graphics('../Images/workflow2_dimensReduc.png')
+```
+
+## Why do high-dimensional data pose a problem?
+
+In single-cell data we typically have thousands of genes across thousands (or millions!) of cells.
+
+* Interpretation/visualisation beyond 2D is hard.
+* As we increase the number of dimensions, our data becomes more sparse. <!-- The average distance between two points of our data set is increased and invariant. -->
+* High computational burden for downstream analysis (such as cell clustering)
+
+Solution: collapse the number of dimensions to a more manageable number, while preserving information.
+
+```{r echo=FALSE, out.width= "50%", fig.align='center', fig.cap="(<a href='http://phdthesis-bioinformatics-maxplanckinstitute-molecularplantphys.matthias-scholz.de/#pca_illu3d'>Image source</a>)"}
+knitr::include_graphics('../Images/ExpressionSpaceToPCASpace.png')
+```
+
+
+
+## There are many dimensionality reduction algorithms 
+
+```{r echo=FALSE, out.width= "70%", fig.align='center'}
+knitr::include_graphics('../Images/dim_red_algorithms.png')
+```
+<br>
+
+* Model the gene-variance relationship across all genes to define a data-driven "technical variation threshold"
+
+
+## Principal Components Analysis (PCA)
+
+```{r echo=FALSE, fig.align='center', out.width='50%'}
+knitr::include_graphics('https://static.packt-cdn.com/products/9781789345070/graphics/assets/02ea50cd-5589-46e8-8bf3-388c3ed9c326.png')
+```
+
+* It's a linear algebraic method of dimensionality reduction 
+
+* Finds principal components (PCs) of the data 
+
+  + Directions where the data is most spread out (highest variance)
+  + PC1 explains most of the variance in the data, then PC2, PC3, etc. 
+  + PCA is primarily a dimension reduction technique, but it is also useful for visualization
+  + A good separation of dissimilar objects is provided
+  + Preserves the global data structure 
+
+
+## Principal Components Analysis (PCA)
+
+```{r echo=FALSE, fig.align='center', out.width='50%'}
+knitr::include_graphics('https://static.packt-cdn.com/products/9781789345070/graphics/assets/02ea50cd-5589-46e8-8bf3-388c3ed9c326.png')
+```
+
+* When data is very highly-dimensional, we can select the most important PCs only, and use them for downstream analysis (e.g. clustering cells)
+
+  + This reduces the dimensionality of the data from ~20,000 genes to maybe 20-50 PCs
+  
+  + Each PC represents a robust 'metagene' that combines information across a correlated gene set
+
+* Prior to PCA we scale the data so that genes have equal weight in downstream analysis and highly expressed genes don't dominate 
+
+
+## How many principal components for downstream analysis?
+
+After PCA we are still left with as many dimensions in our data as we started
+
+```{r echo=FALSE, out.extra='style="float:left; width:45%;"', fig.cap="(<a href='http://bioconductor.org/books/3.17/OSCA.advanced/dimensionality-reduction-redux.html'>Image Source</a>)"}
+knitr::include_graphics('http://bioconductor.org/books/3.14/OSCA.advanced/more-reddim_files/figure-html/elbow-1.png')
+```
+
+But our principal components progressively capture less variation in the data
+
+How do we select the number of PCs to retain for downstream analysis?
+
+  + Using the "Elbow" method on the scree plot 
+  + Using the model of technical noise (shown earlier)
+  + Trying downstream analysis with different number of PCs (10, 20, or even 50) 
+
+
+## Visualizing PCA results: PC scores
+
+<!--
+[Hugo] Replacing with examples from OSCA book
+
+```{r echo=FALSE, out.width= "35%", out.extra='style="float:left; padding:30px"'}
+knitr::include_graphics('../Images/PCA_plot.png')
+```
+-->
+
+Because PC1 and PC2 capture most of the variance of the data, it is common to visualise the data projected onto those two new dimensions.
+
+<img src="http://bioconductor.org/books/3.14/OSCA.basic/reduced-dimensions_files/figure-html/zeisel-pca-1.png" alt="PCA plot" style="float:left; padding:30px; width:50%;">
+
+Gene expression patterns will be captured by PCs → PCA can separate cell types 
+
+Note that PCA can also capture other things, like sequencing depth or cell heterogeneity/complexity! 
+
+However, PC1 + PC2 are usually not enough to visualise all the diversity of cell types in single-cell data (usually we need to use PC3, PC4, etc...) → not so good for visualisation, so...
+
+<!--
+[Hugo] Omitting these sections for now
+
+## Visualizing PCA results: variable loadings 
+
+```{r echo=FALSE, out.width= "45%", out.extra='style="float:left; padding:30px"'}
+knitr::include_graphics('../Images/PCA_dim_loads.png')
+```
+
+Visualize top genes associated with each principal component
+
+
+## Visualizing PCA results: heatmaps 
+
+```{r echo=FALSE, out.width= "35%", out.extra='style="float:left; padding:30px"'}
+knitr::include_graphics('../Images/PCA_heatmap.png')
+```
+
+Which genes most separate our cells? 
+
+Both cells and genes are ordered according to their PC scores/loadings. 
+
+-->
+
+## Non-linear dimensionality reduction methods
+
+```{r echo=FALSE, out.width= "35%", out.extra='style="float:left; padding:30px"'}
+knitr::include_graphics('../Images/tsne.png')
+```
+
+Graph-based, non-linear methods: **UMAP** and **t-SNE**
+
+These methods can run on the output of the PCA, which speeds their computation and can make the results more robust to noise 
+
+**t-SNE and UMAP should only be used for visualisation, not as input for downstream analysis**
+
+
+## t-Distributed Stochastic Neighbor Embedding (t-SNE)
+
+```{r echo=FALSE, out.width= "55%", out.extra='style="float:left; padding:30px"'}
+knitr::include_graphics('../Images/tsne2.png')
+```
+
+It has a stochastic step (results vary every time you run it)
+
+Only local distances are preserved, while distances between groups are not always meaningful
+
+Some parameters dramatically affect the resulting projection (in particular "perplexity")
+
+Learn more about how t-SNE works from this video: [StatQuest: t-SNE, Clearly Explained](https://youtu.be/NEaUSP4YerM)
+
+
+## t-SNE
+
+<p style="text-align:center;float:right"><img src="http://bioconductor.org/books/3.14/OSCA.basic/reduced-dimensions_files/figure-html/tsne-brain-1.png" alt="t-SNE example" style="width:600px;"></p>
+
+Main parameter in t-SNE is the **perplexity** (~ number of neighbours each point is "attracted" to)
+
+* Balance between preserving local vs global structure
+* Higher values usually result in more compact clusters
+* But too high can lead to overlap of clusters, making them harder to distinguish
+
+Exploring different perplexity values that best represent the biological diversity of cells is recommended.
+
+
+## UMAP 
+
+```{r echo=FALSE, out.width= "50%", out.extra='style="float:right; padding:30px"'}
+knitr::include_graphics('../Images/dim_red_graph_based.png')
+```
+
+
+* Non-linear graph-based dimension reduction method like t-SNE 
+
+* Newer & efficient = fast 
+
+* Runs on top of PCs 
+
+* Based on topological structures in multidimensional space 
+
+* Faster and less computationally intensive than tSNE
+  
+* Preserves the global structure better than t-SNE 
+
+
+## UMAP
+
+<p style="text-align:center;float:right"><img src="http://bioconductor.org/books/3.14/OSCA.basic/reduced-dimensions_files/figure-html/umap-brain-1.png" alt="UMAP example" style="width:600px;"></p>
+
+Main parameter in UMAP is `n.neighbors` (the **number of neighbours** used to construct the initial graph).
+
+Another common parameter is `min.dist` (**minimum distance** between points)
+
+* Together they determine balance between preserving local vs global structure
+* For practical simplicity, we usually only tweak `n.neighbors`, although playing with both parameters can be beneficial
+
+Exploring different number of neighbours that best represent the biological diversity of cells is recommended.
+
+
+## Key Points
+
+- Dimensionality reduction methods simplify high-dimensional data while preserving biological signal.
+- Common methods in scRNA-seq analysis include PCA, t-SNE, and UMAP.
+- PCA transforms the data linearly to capture the main variance and reduce the dimensionality from thousands of genes to a few principal components.
+- PCA results can be utilized for downstream analysis like cell clustering and trajectory analysis, and as input for non-linear methods such as t-SNE and UMAP.
+- t-SNE and UMAP are non-linear methods that group similar cells and separate dissimilar cell clusters.
+- These non-linear methods are primarily for data visualization, not for downstream analysis.
+
+
+<!--
+
+[Hugo] We cover this in the worksheet 
+
+## Commands
+
+* Find variable genes: `getTopHVGs` 
+
+* Calculate PCA: `runPCA`
+
+* Find optimum number of PCs
+
+* Calculate tSNE and UMAP: `runTSNE`, `runUMAP`
+-->
+
+## Acknowledgments  
+
+Slides are adapted from [Paulo Czarnewski](https://nbisweden.github.io/workshop-scRNAseq/lectures/dimensionality_reduction_paulo_czarnewski_2023.pdf) and Zeynep Kalender-Atak
+
+**References (image sources):**
+
+- [Orchestrating Single-Cell Analysis with Bioconductor](http://bioconductor.org/books/release/OSCA/)
+- [Parametric UMAP embeddings for representation and semi-supervised learning](https://arxiv.org/abs/2009.12981)
