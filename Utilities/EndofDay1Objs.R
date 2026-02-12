@@ -29,51 +29,23 @@ seurat_object[["percent.mt"]] <- PercentageFeatureSet(seurat_object, pattern = "
 
 metadata <- seurat_object@meta.data
 
-keep <- c()
-for (sam in sampleinfo$SampleName) {
-  cells <- metadata %>%
-    filter(orig.ident == sam) %>%
-    filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA)),
-           nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA)),
-           percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
-    rownames_to_column("Cell") %>%
-    pull(Cell)
-  keep <- c(keep,cells)
-}
-
-new_metadata <- metadata %>%
+sample_name_keep_cells <- metadata %>%
   rownames_to_column("Cell") %>%
-  mutate(Keep = ifelse(Cell %in% keep, "Keep", "Remove")) %>%
-  column_to_rownames("Cell")
+  group_by(SampleName) %>%
+  filter(nFeature_RNA > (median(nFeature_RNA) - 2 * mad(nFeature_RNA)),
+         nCount_RNA > (median(nCount_RNA) - 2 * mad(nCount_RNA)),
+         percent.mt < (median(percent.mt) + 2 * mad(percent.mt))) %>%
+  ungroup() %>%
+  pull(Cell)
 
-seurat_object@meta.data <- new_metadata
+nrow(metadata) - length(sample_name_keep_cells)
 
-VlnPlot(seurat_object, 
-        features = c("nFeature_RNA"), 
-        cols = rep(c("white"), each = 11),
-        layer = "counts", 
-        pt.size=0) +
-  geom_point(mapping = aes(color = seurat_object@meta.data$Keep), size = 0.5) + theme(legend.position = 'none')
+filtered_seurat_object <- subset(seurat_object, 
+                                 cells = sample_name_keep_cells)
 
-VlnPlot(seurat_object, 
-        features = c("nCount_RNA"), 
-        cols = rep(c("white"), each = 11),
-        layer = "counts", 
-        pt.size=0) +
-  geom_point(mapping = aes(color = seurat_object@meta.data$Keep), size = 0.5) + theme(legend.position = 'none')
+saveRDS(filtered_seurat_object, file = "../RObjects/Filtered.full.rds")
 
-VlnPlot(seurat_object, 
-        features = c("percent.mt"), 
-        cols = rep(c("white"), each = 11),
-        layer = "counts", 
-        pt.size=0) +
-  geom_point(mapping = aes(color = seurat_object@meta.data$Keep), size = 0.5) + theme(legend.position = 'none')
-
-seurat_object_filtered <- subset(seurat_object, cells = keep)
-
-saveRDS(seurat_object_filtered, file = "../RObjects/Filtered.full.rds")
-
-downsampled_seurat <- subset(seurat_object_filtered, downsample = 500)
+downsampled_seurat <- subset(filtered_seurat_object, downsample = 500)
 
 downsampled_seurat <- subset(downsampled_seurat, 
                              features = rownames(downsampled_seurat)[Matrix::rowSums(downsampled_seurat[["RNA"]]$counts) > 0])

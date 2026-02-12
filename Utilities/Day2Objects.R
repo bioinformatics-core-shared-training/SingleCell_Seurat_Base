@@ -16,7 +16,7 @@ seurat_object_full_plot <- FindVariableFeatures(seurat_object_full_plot,
                                       nfeatures = 3000)
 VariableFeaturePlot(seurat_object_full_plot)
 
-#####
+##### Normalisation #######
 
 seurat_object_500 <- SCTransform(seurat_object_500, 
                                  vars.to.regress = "percent.mt", verbose = FALSE)
@@ -25,3 +25,29 @@ seurat_object_full <- SCTransform(seurat_object_full,
 
 saveRDS(seurat_object_500, file = "../RObjects/SCT.500.rds")
 saveRDS(seurat_object_full, file = "../RObjects/SCT.full.rds")
+
+####### Dimensionality reduction ########
+
+seurat_object_500 <- RunPCA(seurat_object_500, 
+                        features = VariableFeatures(object = seurat_object_500))
+seurat_object_full <- RunPCA(seurat_object_full,
+                        features = VariableFeatures(object = seurat_object_full))
+
+seurat_object_500 <- RunTSNE(seurat_object_500, 
+                         reduction = "pca", 
+                         dims = 1:15)
+seurat_object_full <- RunTSNE(seurat_object_full,
+                         reduction = "pca",
+                         dims = 1:15)
+
+seurat_object_500 <- RunUMAP(seurat_object_500, 
+                         reduction = "pca", 
+                         dims = 1:15)
+seurat_object_full <- RunUMAP(seurat_object_full,
+                         reduction = "pca",
+                         dims = 1:15)
+
+saveRDS(seurat_object_500, file = "../RObjects/DimRed.500.rds")
+saveRDS(seurat_object_full, file = "../RObjects/DimRed.full.rds")
+
+###### Intergration ######
