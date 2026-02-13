@@ -1,28 +1,51 @@
 ---
 title: "Introduction to single-cell RNA-seq analysis"
-subtitle: Normalisation and Feature selection
 output:
   html_document:
     toc: yes
+    toc_float: true
+    toc_depth: 3
     number_sections: true
-    code_folding: show 
+    pandoc_args: ["--number-offset", "4"] # TOC will start at 5
+    code_folding: show
+    css: ../css/boxes.css
 ---
 
-# Normalisation
+# Normalisation and Feature selection
 
-```{r setup, include=FALSE, message=FALSE, warning=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include=FALSE, purl=FALSE}
+# Move all the course files to the `course_files` folder
+# This setup makes sure the working directory is set to this folder
+# All paths are relative to it, so participant scripts work when we purl it
+knitr::opts_chunk$set(echo = TRUE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
+set.seed(123)
+```
+
+## Normalisation
+
+Normalisation is a crucial step in single-cell RNA-seq data analysis. 
+It aims to remove technical variations while preserving biological differences between cells. 
+Various methods exist for normalising single-cell RNA-seq data, each with its own advantages and disadvantages.
+
+We will be using:
+
+- `Seurat` for the main analysis
+- `sctransform` for normalisation, with the additional `glmGamPoi` package, which makes it run faster
+- `tidyverse` for data manipulation and plotting
+- We also import specific functions from the `matrixStats` package for calculating summary statistics from matrices
+
+```{r load_libraries, message=FALSE, warning=FALSE}
+# Load the libraries we will need for this practical
 library(Seurat)
 library(sctransform)
 library(glmGamPoi)
-library(ggplot2)
 library(tidyverse)
-set.seed = 123 
+use("SparseArray", c("rowMeans", "rowVars", "colMeans", "colVars"))
 ```
 
-Normalisation is a crucial step in single-cell RNA-seq data analysis. It aims to remove technical variations while preserving biological differences between cells. Various methods exist for normalising single-cell RNA-seq data, each with its own advantages and disadvantages.
-
-## Load data object
+### Load data object
 
 For the purposes of this demonstration we have generated a smaller data set in
 which there are only 500 cells per sample. This is so that the code can be run
@@ -32,32 +55,31 @@ session](04_Preprocessing_And_QC.html) using thresholds set on a per sample basi
 random from each sample.
 
 ```{r load_data}
-seurat_object <- readRDS("../RObjects/Filtered.500.rds")
+seurat_object <- readRDS("RObjects/Filtered.500.rds")
 seurat_object
 ```
 
   
-## Why normalise?
+### Why normalise?
 
 ```{r norm_intro_plots}
-oneSamTab <- seurat_object@meta.data %>% 
-  filter(orig.ident == "PBMMC-1") %>% 
+one_sam_tab <- seurat_object@meta.data %>%
+  filter(orig.ident == "PBMMC-1") %>%
   rownames_to_column("Cell") %>%
-  dplyr::select(orig.ident,Cell, nCount_RNA) %>% 
-  mutate(cell_num = 1:n())
+  dplyr::select(orig.ident, Cell, nCount_RNA) %>%
+  mutate(cell_num = seq_len(n()))
 
-p_before_nom <- ggplot(data=oneSamTab, aes(x=cell_num, y=nCount_RNA)) +
-  geom_bar(stat = 'identity') +
-  labs( x= 'Cell Index',
-        y='Cell UMI counts',
-        title = "PBMMC_1: Before Normalization" ) +
+p_before_norm <- ggplot(data = one_sam_tab, aes(x = cell_num, y = nCount_RNA)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Cell Index",
+       y = "Cell UMI counts",
+       title = "PBMMC_1: Before Normalization") +
   theme_classic() +
   theme(
-    plot.title = element_text(hjust = 0.5, size=20, color = 'red')
+    plot.title = element_text(hjust = 0.5, size = 20, color = "firebrick")
   )
 
-p_before_nom
-
+p_before_norm
 ```  
 
 * Above plot shows the UMI counts/cell (transcript molecules) for 500 cell from the PBMMC_1 sample
@@ -78,7 +100,7 @@ p_before_nom
 * Normalization is a critical step that corrects cell-to-cell technical differences.
 * By normalizing, downstream comparisons of relative expression between cells are valid.
 
-## Normalization strategies
+### Normalization strategies
 
 The sparse nature of scRNA data makes normalization difficult, unlike bulk RNAseq data.
 
@@ -126,7 +148,7 @@ sparse scRNA-seq data.
 * This deviation is the result of removing zeroes prior to normalization. 
 * Therefore other normalization methods specific to scRNAseq data like deconvolution, sctransform etc. were proposed.
  
-# sctransform: Variant Stabilising Transformation
+## sctransform: Variant Stabilising Transformation
 
 The standard normalization method in Seurat is a global-scaling normalization method, which transforms the feature counts for each cell by dividing by the total counts of the cell and multiplying by a scale factor (default = 10000) and then applying a natural log with a pseudocount of 1. Global-scaling methods rely on an assumption that each cell originally contains the same number of RNA molecules. 
 
@@ -139,7 +161,7 @@ expression values in some downstream analyses, such as dimensionality reduction.
 
 !["Effect of scaling normalization"](../Images/total_UMI_counts_vs_gene_UMI_counts.png)
 
-## Selection of highly variable genes
+### Selection of highly variable genes
 
 In feature selection the principle is to remove those genes which are uninteresting or uninformative to both improve computation and because this 'noise' reduction will hopefully enable us to more clearly see the true biology in our data. We make the assumption that most of the low level variance is not caused by real biology and is due to stochastic sampling in the single cell protocol and various other technical effects. The genes which have the most variance are therefore the ones that reflect the real biological difference and are what we want to focus on. This is obviously not a perfect assumption but it is a good way to make informed interpretations from your data that you can hopefully have a little more confidence in.
 
@@ -193,7 +215,11 @@ We will use the `variance stabilising transform`.
 By default it will select 2000 features so we will set this to 3000 to match what would be default in `sctransform`.
 
 ```{r HVGs}
-seurat_object_norm <- FindVariableFeatures(seurat_object_norm, selection.method = "vst", nfeatures = 3000)
+seurat_object_norm <- FindVariableFeatures(
+  seurat_object_norm,
+  selection.method = "vst",
+  nfeatures = 3000
+)
 ```
 
 ```{r plot_HVGs}
@@ -204,14 +230,20 @@ VariableFeaturePlot(seurat_object_norm)
 Commonly used strategies for making this decision is to use a set number eg. 1000 or a proportion eg. the top 10% of the genes.
 
 ```{r 1000}
-seurat_object_norm <- FindVariableFeatures(seurat_object_norm, selection.method = "vst", nfeatures = 1000)
+seurat_object_norm <- FindVariableFeatures(
+  seurat_object_norm,
+  selection.method = "vst",
+  nfeatures = 1000
+)
 VariableFeaturePlot(seurat_object_norm)
 ```
 
 ```{r 10percent}
-num_genes <- nrow(seurat_object_norm)
-top_10_percent <- round(0.1 * num_genes)
-seurat_object_norm <- FindVariableFeatures(seurat_object_norm, selection.method = "vst", nfeatures = top_10_percent)
+seurat_object_norm <- FindVariableFeatures(
+  seurat_object_norm,
+  selection.method = "vst",
+  nfeatures = round(0.1 * nrow(seurat_object_norm))
+)
 VariableFeaturePlot(seurat_object_norm)
 ```
 
@@ -220,13 +252,16 @@ The plot above looks like this is a reasonable number of genes to capture the bi
 It would be useful to view the trendline created in FindVariableFeatures to see how well the genes you have selected deviate from the trend. This is not directly available from the Seurat object so we will need to recreate it. We will continue to the last step of the normalisation, the scaling.
 
 ```{r recreate_trendline, message=FALSE, warning=FALSE}
-all.genes <- rownames(seurat_object_norm)
-seurat_object_norm <- ScaleData(seurat_object_norm, features = all.genes, verbose = FALSE)
+seurat_object_norm <- ScaleData(
+  seurat_object_norm,
+  features = rownames(seurat_object_norm),
+  verbose = FALSE
+)
 # Get the normalized data
 norm_data <- GetAssayData(seurat_object_norm, layer = "data")
 # Calculate mean and variance for each gene
 gene_means <- rowMeans(norm_data)
-gene_vars <- apply(norm_data, 1, var)
+gene_vars <- rowVars(norm_data)
 # Create a data frame
 mean_var_df <- data.frame(mean = gene_means, variance = gene_vars)
 # Fit a loess model to capture the trend
@@ -234,14 +269,10 @@ loess_fit <- loess(variance ~ mean, data = mean_var_df)
 # Predict the expected variance based on the fitted model
 mean_var_df$trendline <- predict(loess_fit, newdata = mean_var_df)
 
-#fitline <- scran::fitTrendVar(mean_var_df$mean, mean_var_df$variance)
-#mean_var_df$trendline <- sapply(mean_var_df$mean,fitline$trend)
-
 # Plot the mean-variance relationship with the trend line
 ggplot(mean_var_df, aes(x = mean, y = variance)) +
   geom_point(alpha = 0.3) +
-  geom_line(aes(y = trendline), color = "red", linewidth =
- 1) +
+  geom_line(aes(y = trendline), color = "red", linewidth = 1) +
   scale_x_log10() +
   scale_y_log10() +
   labs(title = "Mean-Variance Relationship with Trend Line",
@@ -249,79 +280,104 @@ ggplot(mean_var_df, aes(x = mean, y = variance)) +
        y = "Variance (log scale)") +
   theme_minimal()
 ```
+
 We can check this against the 3000 selected above by colouring the plot.
 
 ```{r trendline_top3000}
 # same plot but colour points by if in the top3000 HVGs we set before
-top3000 <- head(VariableFeatures(seurat_object_norm), 3000)
-mean_var_df <- mean_var_df %>% 
-  mutate(Top3000 = ifelse(rownames(mean_var_df) %in% top3000, TRUE, FALSE))
+top_3000 <- head(VariableFeatures(seurat_object_norm), 3000)
+mean_var_df <- mean_var_df %>%
+  mutate(top_3000 = ifelse(
+    rownames(mean_var_df) %in% top_3000,
+    TRUE,
+    FALSE
+  ))
 ggplot(mean_var_df, aes(x = mean, y = variance)) +
-  geom_point(alpha = 0.3, aes(colour = factor(Top3000))) +
-  geom_line(aes(y = trendline), color = "black", linewidth =
- 1) +
+  geom_point(alpha = 0.3, aes(colour = factor(top_3000))) +
+  geom_line(aes(y = trendline), color = "black", linewidth = 1) +
   scale_x_log10() +
   scale_y_log10() +
-  labs(title = "Mean-Variance Relationship with Trend Line",
-       x = "Mean Expression (log scale)",
-       y = "Variance (log scale)") +
+  labs(
+    title = "Mean-Variance Relationship with Trend Line",
+    x = "Mean Expression (log scale)",
+    y = "Variance (log scale)"
+  ) +
   theme_minimal()
 ```
 
 
-## Run sctransform normalization
+### Run sctransform normalization
 
 Transformed data will be available in the SCT assay, which is set as the default assay after running sctransform. During normalization, we can also remove confounding sources of variation, for example, mitochondrial mapping percentage. If you think think differences in mitochondrial gene expression are related to biology in your data, you may not want to do this, as it could help with clustering downstream.
 
 ```{r sctransform}
-seurat_object <- SCTransform(seurat_object, vars.to.regress = "percent.mt", verbose = FALSE)
+seurat_object <- SCTransform(
+  seurat_object,
+  vars.to.regress = "percent.mt",
+  verbose = FALSE
+)
 ```
+
 ### Explore the effect of sctransform normalisation
 
 We can compare the effect of the normalisation on the counts values by plotting them as we did previously. The variance has been stabilised across the cells.
 
 ```{r sctransform_plots}
 # plot that compares the sctransform normalised to the raw counts plot above
-seurat_PBMMC1 <- subset(seurat_object, subset = orig.ident == "PBMMC-1")
-RawTab <- seurat_PBMMC1@assays$RNA$counts %>%
+seurat_pbmmc1 <- subset(seurat_object, subset = orig.ident == "PBMMC-1")
+raw_tab <- seurat_pbmmc1@assays$RNA$counts %>%
   as.data.frame() %>%
-  bind_rows(summarise_all(., ~if(is.numeric(.)) sum(.)))
-RawCount <- as.data.frame(t(RawTab[29787,])) %>%
-  mutate(cell_num = 1:n())
+  bind_rows(summarise_all(., ~ if (is.numeric(.)) sum(.)))
+raw_count <- as.data.frame(t(raw_tab[29787, ])) %>%
+  mutate(cell_num = seq_len(n()))
 
-SCTTab <- seurat_PBMMC1@assays$SCT$counts %>%
+sct_tab <- seurat_pbmmc1@assays$SCT$counts %>%
   as.data.frame() %>%
-  bind_rows(summarise_all(., ~if(is.numeric(.)) sum(.)))
-SCTCount <- as.data.frame(t(SCTTab[23602,])) %>%
-  mutate(cell_num = 1:n())
+  bind_rows(summarise_all(., ~ if (is.numeric(.)) sum(.)))
+sct_count <- as.data.frame(t(sct_tab[23602, ])) %>%
+  mutate(cell_num = seq_len(n()))
 
-
-
-p_before_nom <- ggplot(data=RawCount, aes(x=cell_num, y=...29787)) +
-  geom_bar(stat = 'identity') +
-  labs( x= 'Cell Index',
-        y='Cell UMI counts',
-        title = "PBMMC_1: Before Normalization" ) +
+p_before_norm <- ggplot(
+  data = raw_count,
+  aes(x = cell_num, y = ...29787)
+) +
+  geom_bar(stat = "identity") +
+  labs(
+    x = "Cell Index",
+    y = "Cell UMI counts",
+    title = "PBMMC_1: Before Normalization"
+  ) +
   theme_classic() +
   theme(
-    plot.title = element_text(hjust = 0.5, size=20, color = 'red')
+    plot.title = element_text(hjust = 0.5, size = 20, color = "red")
   )
 
-p_after_nom <- ggplot(data=SCTCount, aes(x=cell_num, y=...23602)) +
-  geom_bar(stat = 'identity') +
-  labs( x= 'Cell Index',
-        y='Cell UMI counts',
-        title = "PBMMC_1: After Normalization" ) +
+p_after_norm <- ggplot(
+  data = sct_count,
+  aes(x = cell_num, y = ...23602)
+) +
+  geom_bar(stat = "identity") +
+  labs(
+    x = "Cell Index",
+    y = "Cell UMI counts",
+    title = "PBMMC_1: After Normalization"
+  ) +
   theme_classic() +
   theme(
-    plot.title = element_text(hjust = 0.5, size=20, color = 'red')
+    plot.title = element_text(hjust = 0.5, size = 20, color = "red")
   )
 
 library(patchwork)
 
-p_before_nom + p_after_nom
+p_before_norm + p_after_norm
 ```
 
-```{r session}
+----
+
+<details><summary>`sessionInfo()`</summary>
+
+```{r session_info, echo=FALSE, purl=FALSE}
 sessionInfo()
 ```
+
+</details>
