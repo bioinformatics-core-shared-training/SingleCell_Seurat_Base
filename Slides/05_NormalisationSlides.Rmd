@@ -5,8 +5,8 @@ output:
   ioslides_presentation:
     widescreen: yes
     smaller: yes
-    logo: Images/uniOfCamCrukLogos.png
-    css: css/stylesheet.css
+    logo: ../Images/uniOfCamCrukLogos.png
+    css: ../css/stylesheet.css
   beamer_presentation: default
 ---
 
@@ -62,7 +62,7 @@ allowing meaningful comparison of expression profiles between cells.
 Depth bias: Read differences between cells
 
 ```{r echo=FALSE, out.width='70%', fig.align='center'}
-knitr::include_graphics('Images/normalisation_toy_example.png')
+knitr::include_graphics('../Images/normalisation_toy_example.png')
 ```
 
 Simple library size normalization accounts for the depth bias
@@ -147,10 +147,36 @@ DESeq’s size factor
 "This procedure omits the need for heuristic steps including pseudocount addition or log-transformation and improves common downstream analytical tasks such as variable gene selection, dimensional reduction, and differential expression. We named this method sctransform."
 
 Steps:
+
 1. Estimate size factors using a regularized negative binomial regression model
+
 2. Scale the counts by dividing the raw counts with the estimated size factors
+
 3. Apply a variance stabilizing transformation to the scaled counts by calculating Pearson residuals from the negative binomial regression model
 
+## SCTransform
+
+Pearson residual = (Observed value – Expected value) / √(Expected variance)
+
+If a gene has exactly the expression level we’d expect based on the model → residual = 0
+
+If a gene is expressed higher than expected → positive residual
+
+If a gene is expressed lower than expected → negative residual
+
+These residuals become our normalised values and they’re useful for several reasons:
+
+* Standardized scale: All genes end up on the same scale regardless of their expression level
+
+* Variance stabilization: Unlike raw counts, these residuals have roughly the same variance across all expression levels. The transformation ensures that genes with different expression levels can be compared fairly – the variance no longer depends on the mean expression level.
+
+* Interpretation: Positive residuals mean higher-than-expected expression; negative means lower-than-expected. A residual of +2 means “this gene is expressed about 2 standard deviations higher than expected”.  
+
+## SCTransform
+
+Really Useful Website:
+
+https://biostatsquid.com/sctransform-simple-explanation/
 
 ## Inside SCTransform there is a 'selection' of the the most variable genes.
 
@@ -159,7 +185,6 @@ By default these are used for downstream dimensionality reduction and clustering
 * Which genes should we use for downstream analysis?
 
 Select genes which capture biologically-meaningful variation, while reducing the number of genes which only contribute to technical noise
-
 
 
 ## Recap
