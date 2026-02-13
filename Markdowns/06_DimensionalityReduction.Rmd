@@ -1,16 +1,27 @@
 ---
 title: "Introduction to single-cell RNA-seq analysis"
-date: "January 2026"
 output:
   html_document:
     toc: yes
+    toc_float: true
+    toc_depth: 3
     number_sections: true
-    code_folding: show 
+    pandoc_args: ["--number-offset", "5"] # TOC will start at 6
+    code_folding: show
     css: ../css/boxes.css
-subtitle: Dimensionality Reduction
 ---
 
-# Introduction
+# Dimensionality Reduction
+
+```{r setup, include=FALSE, purl=FALSE}
+# Move all the course files to the `course_files` folder
+# This setup makes sure the working directory is set to this folder
+# All paths are relative to it, so participant scripts work when we purl it
+knitr::opts_chunk$set(echo = TRUE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
+set.seed(123)
+```
 
 In this section we are going to cover the basics of 
 dimensionality reduction. These methods allow us to represent our 
@@ -20,48 +31,41 @@ analysis.
 
 In dimensionality reduction we attempt to find a way to represent all the the information we have in expression space in a way that we can easily interpret. High dimensional data has several issues. There is a high computational requirement to performing analysis on 30,000 genes and 47,000 cells (in the Caron dataset). Humans live in a 3D world; we can't easily visualise all the dimensions. And then there is sparsity. As the number of dimensions increases the distance between two data points increases and becomes more invariant. This invariance causes us problems when we try to cluster the data into biologically similar groupings. By applying some dimensionality reducing methods we can solve these issues to a level where we can make interpretations.
 
-# Setup
+## Setup
 
 Before we start, let's load our packages and read our data in. 
 
-```{r load_packages, include=FALSE, message=FALSE, warning=FALSE}
+```{r load_libraries, message=FALSE, warning=FALSE}
+# Load the libraries we will need for this practical
 library(Seurat)
-library(ggplot2)
 library(tidyverse)
-set.seed = 123 
+
+# set default ggplot theme
+theme_set(theme_classic())
 ```
-We will load the _Seurat_ object generated in the
-[Normalisation](05_Normalisation.html) section, which contains normalised counts
-for 500 cells per sample. For demonstration purposes we are not using the full dataset but you would in your analyses.
+
+We will load the _Seurat_ object generated in the [Normalisation](05_NormalisationAndFeatureSelection.html) section, which contains normalised counts for 500 cells per sample. 
+For demonstration purposes we are not using the full dataset but you would in your analyses.
 
 ```{r load_data}
-seurat_object <- readRDS("../RObjects/SCT.500.rds")
+# load the preprocessed Seurat object with 500 cells per sample
+seurat_object <- readRDS("RObjects/SCT.500.rds")
 ```
 
-# Dimensionality Reduction 
+## Dimensionality reduction overview
 
-Many scRNA-seq analysis procedures involve comparing cells based on their
-expression values across thousands of genes. Thus, each individual gene
-represents a dimension of the data (and the total number of genes represents the
-"dimensionality" of the data). More intuitively, if we had a scRNA-seq data set
-with only two genes, we could visualise our data in a two-dimensional
-scatterplot, with each axis representing the expression of a gene and each point
-in the plot representing a cell. Intuitively, we can imagine the same for 3
-genes, represented as a 3D plot. Although it becomes harder to imagine, this
-concept can be extended to data sets with thousands of genes (dimensions), where
-each cell’s expression profile defines its location in the high-dimensional
-expression space.
+Many scRNA-seq analysis procedures involve comparing cells based on their expression values across thousands of genes. 
+Thus, each individual gene represents a dimension of the data (and the total number of genes represents the "dimensionality" of the data). 
+More intuitively, if we had a scRNA-seq data set with only two genes, we could visualise our data in a two-dimensional scatterplot, with each axis representing the expression of a gene and each point in the plot representing a cell. 
+Intuitively, we can imagine the same for 3 genes, represented as a 3D plot. 
+Although it becomes harder to imagine, this concept can be extended to data sets with thousands of genes (dimensions), where each cell's expression profile defines its location in the high-dimensional expression space.
 
-As the name suggests, dimensionality reduction aims to reduce the number of
-separate dimensions in the data. This is possible because different genes are
-correlated if they are affected by the same biological process. Thus, we do not
-need to store separate information for individual genes, but can instead
-compress multiple features into a single dimension, e.g., an “eigengene”
-(Langfelder and Horvath 2007). This reduces computational work in downstream
-analyses like clustering, as calculations only need to be performed for a few
-dimensions, rather than thousands. It also reduces noise by averaging across
-multiple genes to obtain a more precise representation of the patterns in the
-data. And finally it enables effective visualisation of the data, for those of
+As the name suggests, dimensionality reduction aims to reduce the number of separate dimensions in the data. 
+This is possible because different genes are correlated if they are affected by the same biological process. 
+Thus, we do not need to store separate information for individual genes, but can instead compress multiple features into a single dimension, e.g., an “eigengene” (Langfelder and Horvath 2007). 
+This reduces computational work in downstream analyses like clustering, as calculations only need to be performed for a few dimensions, rather than thousands. 
+It also reduces noise by averaging across multiple genes to obtain a more precise representation of the patterns in the data. 
+And finally it enables effective visualisation of the data, for those of
 us who are not capable of visualizing more than 2 or 3 dimensions.
 
 Here, we will cover three methods that are most commonly used in scRNA-seq
@@ -71,12 +75,15 @@ analysis:
 - t-Distributed Stochastic Neighbor Embedding (t-SNE)
 - Uniform Manifold Approximation and Projection (UMAP)
 
-Before we go into the details of each method, it is important to mention that
-while the first method (PCA) can be used for downstream analysis of the data
-(such as cell clustering), the latter two methods (t-SNE and UMAP) should only
-be used for visualisation and not for any other kind of analysis.
+Before we go into the details of each method, it is important to mention that while the first method (PCA) can be used for downstream analysis of the data (such as cell clustering), the latter two methods (t-SNE and UMAP) should only be used for visualisation and not for any other kind of analysis.
 
 ## Principal Components Analysis
+
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+
+#### PCA ####
+```
 
 One of the most used and well-known methods of dimensionality reduction is
 principal components analysis (PCA). This method performs a linear
@@ -123,24 +130,29 @@ updated version of the single cell object with the PCA result added to the
 By default the `RunPCA()` function will only use the variable features identified in the SCTransform step.
 
 ```{r run_pca }
-seurat_object <- RunPCA(seurat_object, features = VariableFeatures(object = seurat_object))
+# Run PCA
+seurat_object <- RunPCA(seurat_object, 
+                        features = VariableFeatures(seurat_object))
 ```
 
-Running this function will add a new slot to our seurat object called `pca` which contains the PCA representation of our data. This can be accessed using the `Reductions()` function.
+Running this function will add a new slot to our Seurat object called `pca` which contains the PCA representation of our data. This can be accessed using the `Reductions()` function.
 
 ```{r check_pca}
+# check the new reductions slot
 Reductions(seurat_object)
 ```
 
 The output above tells us changes in which genes are represented by each principle component. One of the first things to investigate after doing a PCA is how much variance is explained by each PC. We can check the percentage of variance explained by each PC using the `Stdev()` function.
 
 ```{r check_pca_variance}
+# check the variance explained by each PC
 Stdev(seurat_object, reduction = "pca")
 ```
 
 The typical way to view this information is using what is known as a "scree plot". In Seurat the function is called `ElbowPlot()`, and it plots the standard deviation of each PC, which is a measure of how much variance is explained by that PC. The more variance explained, the more important that PC is for representing the data. We can use this plot to decide how many PCs to retain for downstream analysis.
 
 ```{r scree_plot}
+# plot the variance explained by each PC
 ElbowPlot(seurat_object, ndims = 50)
 ```
 
@@ -152,7 +164,9 @@ To visualise our cells in the reduced dimension space defined by PC1 and PC2, we
 can use the `DimPlot()` function.
 
 ```{r plotPCA}
-DimPlot(seurat_object, reduction = "pca") 
+# plot the PCA
+DimPlot(seurat_object,
+        reduction = "pca")
 ```
 
 The proximity of cells in this plot reflects the similarity of their expression
@@ -161,20 +175,28 @@ profiles.
 We can also plot different PCs, using the `dims` option:
 
 ```{r plotPCA_multiple}
-
-DimPlot(seurat_object, reduction = "pca", dims = c(2, 3))
-
+# plot PC2 and PC3
+DimPlot(seurat_object,
+        reduction = "pca",
+        dims = c(2, 3))
 ```
 
 We can also split the plot by different options using the `split.by` option. For example, we can split the plot by sample group.
 
 ```{r plotPCA_split}
-
-DimPlot(seurat_object, reduction = "pca", split.by = "SampleGroup")
-
+# plot PC1 and PC2 split by sample group
+DimPlot(seurat_object,
+        reduction = "pca",
+        split.by = "SampleGroup")
 ```
 
 ## t-SNE: t-Distributed Stochastic Neighbor Embedding
+
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+
+#### t-SNE ####
+```
 
 The t-Distributed Stochastic Neighbor Embedding (t-SNE) approach addresses the
 main shortcoming of PCA, which is that it can only capture linear
@@ -239,18 +261,26 @@ only and not for downstream analysis (such as cell clustering)**.
 ### Running t-SNE
 
 Similarly to how we did with PCA, there are functions that can run a t-SNE
-directly on our SingleCellExperiment object. We will leave this exploration for
-you to do in the following exercises, but the basic code is very similar to that
-used with PCA. For example, the following would run t-SNE with default options:
+directly on our SingleCellExperiment object. 
+We will leave this exploration for you to do in the following exercises, but the basic code is very similar to that used with PCA. 
+For example, the following would run t-SNE with default options:
 
 ```{r run_tsne}
-seurat_object <- RunTSNE(seurat_object, 
-                         reduction = "pca", 
-                         dims = 1:15)
-DimPlot(seurat_object, reduction = "tsne")
+# run t-SNE using default options
+seurat_object <- RunTSNE(seurat_object,
+                         reduction = "pca")
+
+# confirm a new reduction was added to the object
+Reductions(seurat_object)
+
+# plot the t-SNE
+DimPlot(seurat_object,
+        reduction = "tsne")
 ```
 
-Notice by deafult it colours using the `orig.ident` column in the meta.data. 
+Notice by default it colours using the `orig.ident` column in the meta.data. 
+
+### Exercise: t-SNE
 
 :::exercise
 
@@ -264,25 +294,37 @@ affects the results
 
 ##### Run t-SNE {-}
 
-1. Add the t-SNE result to the reducedDim slot of the seurat object. 
-2. Name this reducedDim "TSNE_perplex30". Check the documentation for `RunTSNE`
-to help you do this.
-3. Set perplexity = 30 (which is the default if we don't specify it). 
-4. Run t-SNE based on the PCA we ran previously using the first 10 principal
-components. 
-5. Plot the TSNE results using the DimPlot and FeaturePlot functions.
+The code below shows how you can:
 
-We can adjust the perplexity parameter by adding the `perplexity` option.
+1. Add the t-SNE result to the `Reductions` slot of the Seurat object. 
+2. Give this dimensionality reduction a custom name - "TSNE_perplex30".
+3. Set a perplexity value of our choice.
+4. Use a chosen number of principal components.
+5. Set a seed for the random number generator to ensure reproducibility of the results.
 
-```{r exercise1, eval=FALSE}
-seurat_object <- RunTSNE(seurat_object, 
-                         reduction = "pca", 
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+
+#### Exercise: t-SNE ####
+
+# the following code:
+# adds the t-SNE result to the Seurat object
+# names this reduction "TSNE_perplex30"
+# sets perplexity = 30 (which is the default if we don't specify it)
+# uses the first 10 principal components
+# sets a seed for reproducibility
+```
+
+```{r exercise1, results="hide"}
+seurat_object <- RunTSNE(seurat_object,
+                         reduction = "pca",
                          dims = 1:10,
                          perplexity = 30,
                          seed = 123,
                          reduction.name = "TSNE_perplex30",
-                         reduction.key = "TSNEperplex30_")
-DimPlot(seurat_object, reduction = "TSNE_perplex30")
+                         reduction.key = "TSNE30_")
+DimPlot(seurat_object,
+        reduction = "TSNE_perplex30")
 ```
 
 
@@ -292,27 +334,29 @@ DimPlot(seurat_object, reduction = "TSNE_perplex30")
 the new reduction.   
 * Do the results change dramatically between runs?
 
-```{r exercise1a, eval=FALSE}
-YOUR CODE HERE
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r exercise1a, include=FALSE}
+# Part A
+# Re-run the algorithm but change the random seed number.
+# Do the results change dramatically between runs?
+# YOUR CODE HERE
 ```
-
-<details><summary>Hint</summary>
-
-Look at the set.seed() function
-
-</details>
 
 <details><summary>Answer</summary>
 
-```{r answer1a, eval=FALSE}
-seurat_object <- RunTSNE(seurat_object, 
-                         reduction = "pca", 
+```{r answer1a, purl=FALSE}
+# re-run the t-SNE with a different seed
+seurat_object <- RunTSNE(seurat_object,
+                         reduction = "pca",
                          dims = 1:10,
                          perplexity = 30,
                          seed = 321,
                          reduction.name = "TSNE_perplex30_seed321",
-                         reduction.key = "TSNEperplex30seed321_")
-DimPlot(seurat_object, reduction = "TSNE_perplex30_seed321")
+                         reduction.key = "TSNE30seed321_")
+
+# plot the new t-SNE
+DimPlot(seurat_object, 
+        reduction = "TSNE_perplex30_seed321")
 ```
 
 </details>
@@ -320,11 +364,13 @@ DimPlot(seurat_object, reduction = "TSNE_perplex30_seed321")
 
 ##### Part B {-}
 
-Facet these plots by SampleName to better understand where each marker is mostly
-expressed
+Facet these plots by SampleName to better understand where each marker is mostly expressed
 
-```{r exercise1b, eval=FALSE}
-YOUR CODE HERE
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r exercise1b, include=FALSE}
+# Part B
+# Facet these plots by SampleName to better understand where each marker is mostly expressed
+# YOUR CODE HERE
 ```
 
 <details><summary>Hint</summary>
@@ -335,10 +381,11 @@ The function `DimPlot()` has an option called `split.by` that allows you to face
 
 <details><summary>Answer</summary>
 
-```{r answer1b, eval=FALSE}
-DimPlot(seurat_object, 
-        reduction = "TSNE_perplex30_seed321", 
-        split.by = "SampleName", 
+```{r answer1b, purl=FALSE}
+# plot the t-SNE faceted by SampleName
+DimPlot(seurat_object,
+        reduction = "TSNE_perplex30_seed321",
+        split.by = "SampleName",
         ncol = 4)
 ```
 
@@ -346,51 +393,45 @@ DimPlot(seurat_object,
 
 ##### Part C {-}
 
-Rerun the t-SNE using different perplexity values (for example 5 and 500)
+Rerun the t-SNE using different perplexity values (for example 5 and 500).
+Name those reductions as "TSNE_perplex5" and "TSNE_perplex500" respectively.
 
 * Do you get tighter or looser clusters?
 
-```{r exercise1c, eval=FALSE}
-YOUR CODE HERE
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r exercise1c, include=FALSE}
+# Explore different perplexity values (for example 5 and 500)
+# Do you get tighter or looser clusters?
+# YOUR CODE HERE
 ```
-
-<details><summary>Hint</summary>
-
-You can replace values in the perplexity argument of the RunTSNE() function.
-
-</details>
 
 <details><summary>Answer</summary>
 
 First re-run the t-SNE with different perplexity levels (running at 500 make take a little time)
 
-```{r answer1c1, eval=FALSE}
-seurat_object <- RunTSNE(seurat_object, 
-                         reduction = "pca", 
+```{r answer1c1, purl=FALSE}
+# re-run the t-SNE with perplexity 5
+seurat_object <- RunTSNE(seurat_object,
+                         reduction = "pca",
                          dims = 1:10,
                          perplexity = 5,
                          seed = 321,
                          reduction.name = "TSNE_perplex5",
-                         reduction.key = "TSNEperplex5_")
-seurat_object <- RunTSNE(seurat_object, 
-                         reduction = "pca", 
+                         reduction.key = "TSNE5_")
+# re-run the t-SNE with perplexity 500
+seurat_object <- RunTSNE(seurat_object,
+                         reduction = "pca",
                          dims = 1:10,
                          perplexity = 500,
                          seed = 321,
                          reduction.name = "TSNE_perplex500",
-                         reduction.key = "TSNEperplex500_")
+                         reduction.key = "TSNE500_")
 
-```
-
-Then visualise using `DimPlot`
-
-```{r answer1c2, eval=FALSE}
+# visualise all projections using DimPlot
 DimPlot(seurat_object, reduction = "TSNE_perplex5")
 DimPlot(seurat_object, reduction = "TSNE_perplex30")
 DimPlot(seurat_object, reduction = "TSNE_perplex500")
 ```
-
-
 
 </details>
 
@@ -403,8 +444,14 @@ Instead of colouring by *SampleName* we can colour by expression of known cell m
 * CD3D (T cells) 
 * HBA1 (erythrocytes)
 
-```{r exercise1d, eval=FALSE}
-YOUR CODE HERE
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r exercise1d, include=FALSE}
+# Instead of colouring by SampleName, colour by expression of known cell markers
+# CD79A (B cells)
+# CST3 (monocytes)
+# CD3D (T cells)
+# HBA1 (erythrocytes)
+# YOUR CODE HERE
 ```
 
 <details><summary>Hint</summary>
@@ -416,11 +463,13 @@ as they are stored as the rownames in our object. Look at the FeaturePlot() help
 
 <details><summary>Answer</summary>
 
-e.g for CD79A:
+E.g for CD79A:
 
-```{r answer1d, eval=FALSE}
+```{r answer1d, purl=FALSE}
 # colour tsne by CD79A expression
-FeaturePlot(seurat_object, features = "CD79A", reduction = "TSNE_perplex30")
+FeaturePlot(seurat_object,
+            features = "CD79A",
+            reduction = "TSNE_perplex30")
 ```
 
 Some things to note from our data exploration: 
@@ -443,6 +492,12 @@ cell types in our data.
 
 ## UMAP: Uniform Manifold Approximation and Projection
 
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+
+#### UMAP ####
+```
+
 Simiarly to t-SNE, UMAP performs a non-linear transformation of the data to
 project it down to lower dimensions.
 One difference to t-SNE is that this method claims to preserve both local and
@@ -461,16 +516,22 @@ Similarly to t-SNE, since this is a non-linear method of dimensionality
 reduction, **the results of a UMAP projection should be used for visualisation
 only and not for downstream analysis (such as cell clustering)**.
 
-
 ### Running UMAP
 
-Running UMAP is very similar to what we've seen already for PCA and t-SNE, only
-the function name changes:
+Running UMAP is very similar to what we've seen already for PCA and t-SNE, only the function name changes:
 
-```{r runUMAP, purl=FALSE}
-seurat_object <- RunUMAP(seurat_object, reduction = "pca", dims = 1:15)
+```{r runUMAP, warning=FALSE}
+# run UMAP using the first 10 PCs
+seurat_object <- RunUMAP(seurat_object,
+                         reduction = "pca",
+                         dims = 1:10)
 
-DimPlot(seurat_object, reduction = "umap")
+# confirm a new reduction was added to the object
+Reductions(seurat_object)
+
+# visualise the UMAP
+DimPlot(seurat_object,
+        reduction = "umap")
 ```
 
 Because this UMAP also involves a series of randomization steps, setting the
@@ -495,6 +556,8 @@ parameters:
 Similarly to what we did with t-SNE, we will explore this further in the
 following exercise.
 
+### Exercise: UMAP
+
 :::exercise
 
 Our main objectives are: 
@@ -505,26 +568,25 @@ Our main objectives are:
 
 ##### Part A {-}
 
-Run the UMAP with 50 neighbours
+- Run the UMAP with 30 neighbours (look at the help page for the `RunUMAP()` function to find the correct argument to use).
+- Use the first 10 PCs as input.
+- Set a seed for reproducibility.
+- Give this dimensionality reduction a custom name - "UMAP_neighbors30".
 
-```{r exercise2a, eval=FALSE}
-seurat_object <- RunUMAP(seurat_object, 
-                         reduction = "pca", 
-                         dims = 1:10,
-                         seed.use = 123,
-                         *****YOUR CODE HERE*****)
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r exercise2a, include=FALSE}
 
+#### Exercise: UMAP ####
+
+# Part A
+# run the UMAP with 50 neighbours
+# YOUR CODE HERE
 ```
-
-<details><summary>Hint</summary>
-
-Check out the `RunUMAP` help page, there should be an argument for fixing the number of nearest neighbours.
-
-</details>
 
 <details><summary>Answer</summary>
 
-```{r exercise2_solutionA, eval=FALSE, purl=FALSE}
+```{r exercise2_solutionA, purl=FALSE}
+# run the UMAP with 30 neighbours
 seurat_object <- RunUMAP(seurat_object, 
                          reduction = "pca", 
                          dims = 1:10,
@@ -541,42 +603,39 @@ seurat_object <- RunUMAP(seurat_object,
 
 Now visualise the resulting UMAP projection.
 
-```{r exercise2b, eval=FALSE}
-YOUR CODE HERE
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r exercise2b, include=FALSE}
+# Part B
+# visualise the resulting UMAP projection
+# YOUR CODE HERE
 ```
-
-<details><summary>Hint</summary>
-
-You can use the same code as for plotting the TSNE but replacing the arguments to display the UMAP output data.
-
-</details>
 
 <details><summary>Answer</summary>
 
-```{r exercise2_solutionB, eval=FALSE, purl=FALSE}
-DimPlot(seurat_object, reduction = "UMAP_neighbors30")
+```{r exercise2_solutionB, purl=FALSE}
+# visualise the resulting UMAP projection
+DimPlot(seurat_object,
+        reduction = "UMAP_neighbors30")
 ```
 
 </details>
-
 
 ##### Part C {-}
 
-Run the UMAP with 5 and 500 neighbours and compare the results. Similarly tothe TSNE, running with higher neighbour values will take more time.
+Run the UMAP with 5 and 500 neighbours and compare the results. 
+Similarly to the TSNE, running with higher neighbour values will take more time.
 
-```{r exercise2c, eval=FALSE}
-YOUR CODE HERE
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r exercise2c, include=FALSE}
+# Part C
+# run the UMAP with 5 and 500 neighbours and compare the results
+# YOUR CODE HERE
 ```
-
-<details><summary>Hint</summary>
-
-Change the number of neighbours argument in the RunUMAP() function to see what changes.
-
-</details>
 
 <details><summary>Answer</summary>
 
-```{r exercise2_solutionC, eval=FALSE, purl=FALSE}
+```{r exercise2_solutionC, purl=FALSE}
+# run the UMAP with 5 neighbours
 seurat_object <- RunUMAP(seurat_object, 
                          reduction = "pca", 
                          dims = 1:10,
@@ -584,6 +643,7 @@ seurat_object <- RunUMAP(seurat_object,
                          n.neighbors = 5,
                          reduction.name = "UMAP_neighbors5",
                          reduction.key = "UMAPneighbors5_")
+# run the UMAP with 500 neighbours
 seurat_object <- RunUMAP(seurat_object, 
                          reduction = "pca", 
                          dims = 1:10,
@@ -592,6 +652,7 @@ seurat_object <- RunUMAP(seurat_object,
                          reduction.name = "UMAP_neighbors500",
                          reduction.key = "UMAPneighbors500_")
 
+# visualise all projections using DimPlot
 DimPlot(seurat_object, reduction = "UMAP_neighbors5")
 DimPlot(seurat_object, reduction = "UMAP_neighbors30")
 DimPlot(seurat_object, reduction = "UMAP_neighbors500")
@@ -604,23 +665,21 @@ DimPlot(seurat_object, reduction = "UMAP_neighbors500")
 * Compare the UMAP projection with the t-SNE projections 
 * Would you prefer one over the other?
 
-```{r exercise2d, eval=FALSE}
-YOUR CODE HERE
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r exercise2d, include=FALSE}
+# Part D
+# compare the UMAP projection with the t-SNE projections
+# would you prefer one over the other?
+# YOUR CODE HERE
 ```
-
-<details><summary>Hint</summary>
-
-Redraw the TSNE and compare it with your UMAP.
-
-</details>
 
 <details><summary>Answer</summary>
 
-```{r exercise2_solutionD, eval=FALSE, purl=FALSE}
+```{r exercise2_solutionD, purl=FALSE}
+# plot the two projections
 DimPlot(seurat_object, reduction = "TSNE_perplex30")
 DimPlot(seurat_object, reduction = "UMAP_neighbors30")
 ```
-</details>
 
 To answer some of those questions:
 
@@ -630,16 +689,14 @@ small a size creates many groups of cells, possibly picking up on some noise.
 However, qualitatively the results are relatively robust to the number of
 neighbours in this dataset, with the major groups of cells consistently
 appearing together.
-- Both t-SNE and UMAP show similar patterns in the data, so which one to pick in
-this case seems to be a matter of personal preference. However, UMAP is a more
-modern algorithm with better properties when it comes to keeping relative
+- Both t-SNE and UMAP show similar patterns in the data, so which one to pick in this case seems to be a matter of personal preference. However, UMAP is a more modern algorithm with better properties when it comes to keeping relative
 positions between clusters.
 
 </details>
 :::
 
 
-# Key Points and Resources
+## Key Points and Resources
 
 :::highlight
 
@@ -663,9 +720,14 @@ visualisation, and not for downstream analysis.
 
 :::
 
+----
+
+<details><summary>`sessionInfo()`</summary>
+
 ```{r session_info, echo=FALSE, purl=FALSE}
 sessionInfo()
 ```
 
+</details>
 
 
