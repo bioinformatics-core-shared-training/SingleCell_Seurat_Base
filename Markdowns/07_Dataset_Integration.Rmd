@@ -1,0 +1,246 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+subtitle: "Dataset Integration and Batch Correction"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    pandoc_args: ["--number-offset", "4"] # TOC will start at 5
+    code_folding: show
+    css: ../css/boxes.css
+---
+
+```{r setup, include=FALSE, purl=FALSE}
+# Move all the course files to the `course_files` folder
+# This setup makes sure the working directory is set to this folder
+# All paths are relative to it, so participant scripts work when we purl it
+knitr::opts_chunk$set(echo = TRUE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
+set.seed(123)
+```
+
+# Dataset Integration
+
+# Introduction
+
+Often, single-cell experiments are done by processing samples in multiple batches. 
+This may be related to logistical constraints such as the inability to run all
+experimental conditions in parallel, or more extreme cases where samples are
+processed in different laboratories, by different people and even sequenced with
+different technologies (e.g. samples from human patients collected in different
+hospitals).
+These differences across sample batches very often result in global gene
+expression differences across those batches. Since batch-to-batch transcriptomic
+differences are likely unrelated to biological differences, we would ideally
+want "remove" them before drawing inferences about our cell populations.
+
+Biases due to batch effects are not new to single-cell RNA-seq. Indeed, several
+methods have been previously developed for standard bulk RNA-seq approaches.
+Some of those approaches rely on linear models that "regress out" the batch
+effect, assuming that the cell composition is similar across batches. However,
+in single-cell RNA-seq we may very often expect changes in cell compositions
+across batches (e.g. in our course data we have data from cancer samples such as
+ETV6-RUNX as well as a reference panel of healthy blood cells, PBMMCs).
+Therefore, methods are necessary that can deal with with heterogeneity across
+batches.
+
+In recent years, several methods have been developed to deal with this challenge
+([too many to list
+here](https://www.scrna-tools.org/tools?sort=name&cats=Integration)!). Some of
+the most popular ones include the _Mutual Nearest Neighbours_ (MNN) algorithm, a
+Principal Components Analysis-based clustering method implemented in the package
+_HARMONY_ and a method that combines Canonical Correlation Analysis (CCA) and
+MNN implemented in the package _Seurat 5_. These methods have been shown to
+perform well in several benchmark studies (e.g. Luecken et al 2022 and Tran et
+al 2020), although one important message from these studies is that **no single
+method is universally the best in all situations**. For example, some methods
+may be better at preserving small populations of cells as separate groups in the
+integrated data at the cost of poorer overall integration, while others may be
+better at removing batch effects at the cost of also removing some biological
+signal.
+
+Seurat makes it easy for us to use different batch correction methods but we must be able to assess when to use batch correction and how to adjust the parameters for our dataset.
+
+There are several steps to deciding on our batch correction. First we must examine our uncorrected data and decide if we think a correction is needed. Then we run a correction method and visualise the results. Finally, we must assess the results and decide if we are happy with the correction or if we need to adjust the parameters or try a different method.
+
+```{r libraries}
+library(Seurat)
+library(sctransform)
+library(glmGamPoi)
+library(tidyverse)
+library(patchwork)
+```
+
+In the normalisation section this morning we used the `SCTransform` function on a single sample. We have 11 samples in this dataset from 4 different sample groups. Depending on the variance of our data it may be more appropriate to normalise the data across all samples together, or to normalise each sample or sample group separately and then integrate the data.
+
+## Examining our uncorrected data
+
+Given what we saw in Day 1 with large differences in distributions between batches it would be a sensible assumption that the sample groups or even the samples themselves should have normalisation applied separately regardless of whether we decide to batch correct.
+
+### Re-process the data by sample group
+
+We will revert back to the filtered 500 cell dataset that we started the day with and re-process the data by sample group. Seurat allows us to do this still all within one object by using layers. We will use the `SplitObject` function to split our data by sample group and then re-process each sample group separately. The parameter `f` specifies the variable that we want to split by, in this case `SampleGroup`. This will create a new layer in our Seurat object for each sample group. We can then run the normalisation and dimensionality reduction steps separately for each sample group.
+
+```{r split}
+# Load the data
+seurat_object <- readRDS("../RObjects/Filtered.500.rds")
+# Split the data by sample group
+seurat_object[["RNA"]] <- split(seurat_object[["RNA"]],
+                                f = seurat_object$SampleGroup)
+seurat_object
+```
+
+The RNA assay now has 4 layers, one for each of our sample groups.
+
+```{r reprocess}
+# Re-process, Seurat will treat each sample group separately
+seurat_object <- SCTransform(
+  seurat_object,
+  assay = "RNA",
+  vars.to.regress = "percent.mt",
+  verbose = FALSE
+)
+seurat_object <- RunPCA(seurat_object, 
+                         features = VariableFeatures(object = seurat_object))
+seurat_object <- RunUMAP(seurat_object,
+                         reduction = "pca",
+                         dims = 1:15)
+seurat_object
+```
+
+We can now visualise the uncorrected data with a hopefully more appropriate normalisation strategy.
+
+```{r uncorrected}
+# Visualise the uncorrected data
+uncorrected_plot <- DimPlot(seurat_object,
+                            reduction = "umap",
+                            group.by = "SampleName") + 
+  ggtitle("Uncorrected data")
+```
+
+In order to examine our uncorrected data further we will run a quick clustering. clustering will be covered in much greater detail on day 3. This shows us how the cells group together in the uncorrected data. If we see that some of the clusters are mostly made up of cells from a single sample, this is an indication that batch effects are present and that we may want to run a batch correction method.
+
+```{r cluster}
+# Run clustering
+seurat_object <- FindNeighbors(seurat_object, reduction = "pca",
+                                dims = 1:15)
+seurat_object <- FindClusters(seurat_object, 
+                              cluster.name = "uncorrected_clusters")
+
+uncorrected_clusters_plot <- DimPlot(seurat_object, reduction = "umap", 
+                                     group.by ="uncorrected_clusters") + ggtitle("Uncorrected data clusters")
+ 
+uncorrected_plot + uncorrected_clusters_plot                               
+```
+
+It can also be useful to view this as a table to get a better idea of the data.
+
+```{r cluster_unc_tab}
+# Make a table of the clusters and samples
+table(seurat_object$uncorrected_clusters, seurat_object$orig.ident)
+```
+
+It is worth noting that, although this suggests a batch effect, there might be cases where there are genuine differences in cell populations across batches (e.g. if the different batches represent samples from different tissues).
+
+Data integration algorithms designed for single-cell RNA-seq do allow for unique
+cell types existing across batches, however, it's always good to check the
+results of the integration using independent information (e.g. prior information
+about genes that are specific to particular cell types).
+
+According to the biology of our experiment, we expect the samples to have different some cell type compositions but the majority of the data should have cell types in common.
+
+# Integrate Data
+
+Seurat allows us to integrate our data using its `IntegrateLayers` function. This function takes the layers of the RNA assay that we split into and integrates them using a specified batch correction method. There are 4 methods wrapped in this function:
+
+* Anchor-based CCA integration (method=CCAIntegration)
+* Anchor-based RPCA integration (method=RPCAIntegration)
+* Harmony (method=HarmonyIntegration)
+* scVI (method=scVIIntegration)
+
+Another popular method Mutual Nearest Neighbours (MNN) is not wrapped in this function but can be run using the `RunFastMNN` function from the `SeuratWrappers` package. 
+
+## Correct the data - Harmony
+
+Harmony, [Korsunsky et al. 2019](https://www.nature.com/articles/s41592-019-0619-0)  is a method that uses an iterative clustering and correction approach to remove batch effects. It is based on the idea of "harmonizing" the data by finding clusters of cells that are similar across batches and then adjusting the data to make those clusters more similar. It does not edit the raw expresion values but creates a corrected embedding space that can be used for downstream analysis.
+
+![Harmony](https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41592-019-0619-0/MediaObjects/41592_2019_619_Fig1_HTML.png?as=webp)
+
+PCA embeds cells into a space with reduced dimensionality. Harmony accepts the cell coordinates in this reduced space and runs an iterative algorithm to adjust for dataset specific effects. 
+
+* A, Harmony uses fuzzy clustering to assign each cell to multiple clusters, while a penalty term ensures that the diversity of datasets within each cluster is maximized. 
+
+* B, Harmony calculates a global centroid for each cluster, as well as dataset-specific centroids for each cluster. 
+
+* C, Within each cluster, Harmony calculates a correction factor for each dataset based on the centroids. 
+
+* D, Finally, Harmony corrects each cell with a cell-specific factor: a linear combination of dataset correction factors weighted by the cell’s soft cluster assignments made in step a. Harmony repeats steps a to d until convergence. The dependence between cluster assignment and dataset diminishes with each round. Datasets are represented with colors, cell types with different shapes.
+
+It does not assume that all cell types are shared across batches and can therefore deal with unique cell types in different batches. 
+
+```{r harmony}
+# Run Harmony integration
+harmony_object <- IntegrateLayers(object = seurat_object, 
+                                  method = HarmonyIntegration,
+                                  orig.reduction = "pca", 
+                                  new.reduction = "harmony")
+```
+
+We can now visualise the results of the Harmony integration. We will repeat our clustering.
+
+```{r harmony_plot}
+# Run UMAP
+harmony_object <- RunUMAP(harmony_object, 
+                          reduction = "harmony", 
+                          dims = 1:15)
+# Run clustering
+harmony_object <- FindNeighbors(harmony_object, reduction = "harmony",
+                                dims = 1:15)
+harmony_object <- FindClusters(harmony_object, 
+                              cluster.name = "harmony_clusters")
+# make the plots
+harmony_plot <- DimPlot(harmony_object, 
+                        reduction = "umap", 
+                        group.by = "SampleName") + 
+  ggtitle("Harmony integrated data")
+harmony_clusters_plot <- DimPlot(harmony_object, reduction = "umap", 
+                                     group.by ="harmony_clusters") + ggtitle("Harmoney data clusters")
+ 
+harmony_plot + harmony_clusters_plot     
+
+
+```
+
+We can see that the cells are now grouped together more by cluster rather than by sample, suggesting that the batch effect has been removed. 
+
+:::exercise
+
+We have just carried out the integration using harmony with data processed separately at the sample group level. Try running the integration with data processed at the sample level and see if you get a different result.
+
+1. Starting with our filtered data, split the object by `SampleName`.
+2. Reprocess the data with `SCTransform` and run dimensionality reduction on the new layers.
+3. Visualise your uncorrected data.
+4. Run Harmony integration using the `IntegrateLayers` function.
+5. Visualise the results and compare them with the sample group level integration.
+
+<details><summary>Answer</summary>
+
+</details>
+
+:::
+
+# Our final dataset
+
+Once we are happy with the integration we can rejoin our dataset for the downstream analyis.
+
+```{r rejoin}
+# Rejoin the data
+harmony_object <- JoinLayers(harmony_object)
+```
+
+Harmony is often faster for large datasets, whereas MNN is often preferred when strong, non-linear batch effects are present.
+
+
