@@ -1,14 +1,13 @@
 ---
 title: "Day 1 Recap"
 author: ''
-date: "05/12/2024"
 output:
-  beamer_presentation: default
   ioslides_presentation:
-    widescreen: true
-    smaller: true
-    logo: Images/uniOfCamCrukLogos.png
-    css: css/stylesheet.css
+    widescreen: yes
+    smaller: yes
+    logo: ../Images/uniOfCamCrukLogos.png
+    css: ../css/stylesheet.css
+  beamer_presentation: default
 ---
 
 
@@ -16,7 +15,7 @@ output:
 ## Workflow
 
 ```{r echo=FALSE, out.width='60%', fig.align='center'}
-knitr::include_graphics('Images/workflow2.png')
+knitr::include_graphics('../Images/workflow2.png')
 ```
 
 ## Data set 
@@ -50,7 +49,7 @@ for each "read".
 
 
 ```{r echo=FALSE, out.width='60%', fig.align='center'}
-knitr::include_graphics('Images/tenxLibStructureV3dual2.png')
+knitr::include_graphics('../Images/tenxLibStructureV3dual2.png')
 ```
 
 
@@ -88,14 +87,14 @@ cellranger count --id={OUTPUT_SAMPLE_NAME} \
 The contents of the `outs` directory are:
 
 ```{r outputDirOuts, echo=FALSE, fig.align='center', out.width="75%"}
-knitr::include_graphics("Images/CellRangerOutputOuts.png")
+knitr::include_graphics("../Images/CellRangerOutputOuts.png")
 ```
 
 
 ## Not every droplet is useble
 
 ```{r echo=FALSE, out.width='100%', fig.align='center', out.height='80%'}
-knitr::include_graphics('Images/droplet_overview.png')
+knitr::include_graphics('../Images/droplet_overview.png')
 ```
 
 ## Quality Control overview
@@ -109,20 +108,18 @@ knitr::include_graphics('Images/droplet_overview.png')
   * Ultimately To filter the data to only include true cells that are of high quality 
 
 
-## The _SingleCellExperiment_ object
+## The _Seurat_ object
 
 <div style="width: 75%; float: top; padding-left: 10%">
-<img src="Images/sce_object_2.png" class="centerimg" style="width: 100%">
+<img src="../Images/SeuratObj.png" class="centerimg" style="width: 100%">
 </div>
 
 
 ## Useful commands in QC
 
-* access counts: counts(sce)
+* access counts: `seurat_object@assays$RNA$counts`
 
-* access gene metadata: rowData(sce)
-
-* access cell metadata: colData(sce)
+* access cell metadata: `seurat_object@meta.data`
 
 ## QC parameters
 
