@@ -1,4 +1,4 @@
-## ----libraries----------------------------------------
+## ----libraries, warn=FALSE, message=FALSE----------------------------------------
 library(Seurat)
 library(sctransform)
 library(glmGamPoi)
@@ -8,7 +8,7 @@ library(patchwork)
 
 ## ----split-----------------------------------------------------------------------
 # Load the data
-seurat_object <- readRDS("../RObjects/Filtered.500.rds")
+seurat_object <- readRDS("RObjects/Filtered.500.rds")
 # Split the data by sample group
 seurat_object[["RNA"]] <- split(seurat_object[["RNA"]],
                                 f = seurat_object$SampleGroup)
@@ -85,74 +85,18 @@ harmony_clusters_plot <- DimPlot(harmony_object, reduction = "umap",
  
 harmony_plot + harmony_clusters_plot     
 
+#### EXERCISE
+
+#We have just carried out the integration using harmony with data processed separately at the sample group level. Try running the integration with data processed at the sample level and see if you get a different result.
+
+#1. Starting with our filtered data, split the object by `SampleName`.
+#2. Reprocess the data with `SCTransform` and run dimensionality reduction on the new layers.
+#3. Visualise your uncorrected data.
+#4. Run Harmony integration using the `IntegrateLayers` function.
+#5. Visualise the results and compare them with the sample group level integration.
 
 
 
-## ----sample_level----------------------------------------------------------------
-# Read in our filtered data
-seurat_object_sample <- readRDS("../RObjects/Filtered.500.rds")
-
-# Split the data by sample name
-seurat_object_sample[["RNA"]] <- split(seurat_object_sample[["RNA"]],
-                                f = seurat_object_sample$SampleName)
-# Re-process, Seurat will treat each sample separately
-seurat_object_sample <- SCTransform(
-  seurat_object_sample,
-  assay = "RNA",
-  vars.to.regress = "percent.mt",
-  verbose = FALSE
-)
-seurat_object_sample <- RunPCA(seurat_object_sample, 
-                         features = VariableFeatures(object = seurat_object_sample))
-seurat_object_sample <- RunUMAP(seurat_object_sample,
-                         reduction = "pca",
-                         dims = 1:15)
-uncorrected_plot_sample <- DimPlot(seurat_object_sample,
-                            reduction = "umap",
-                            group.by = "SampleName") + 
-  ggtitle("Uncorrected data - Sample")
-
-seurat_object_sample <- FindNeighbors(seurat_object_sample, 
-                                      reduction = "pca",
-                                dims = 1:15)
-seurat_object_sample <- FindClusters(seurat_object_sample, 
-                              cluster.name = "uncorrected_clusters")
-
-uncorrected_clusters_sample_plot <- DimPlot(seurat_object, reduction = "umap", 
-                                     group.by ="uncorrected_clusters") + ggtitle("Uncorrected data clusters - Sample")
-
-uncorrected_clusters_sample_plot
-
-
-
-## ----harmony_sample--------------------------------------------------------------
-# Run Harmony integration
-harmony_object_sample <- IntegrateLayers(object = seurat_object_sample,
-                                  method = HarmonyIntegration,
-                                  orig.reduction = "pca",
-                                  new.reduction = "harmony_sample")
-harmony_object_sample <- RunUMAP(harmony_object_sample,
-                          reduction = "harmony_sample",
-                          dims = 1:15)
-harmony_object_sample_plot <- DimPlot(harmony_object_sample, 
-                                     reduction = "umap", 
-                                     group.by = "SampleName") + 
-  ggtitle("Harmony integrated data - Sample")
-
-uncorrected_plot_sample + harmony_object_sample_plot
-
-harmony_object_sample <- FindNeighbors(harmony_object_sample, 
-                                       reduction = "harmony_sample",
-                                dims = 1:15)
-harmony_object_sample <- FindClusters(harmony_object_sample, 
-                              cluster.name = "harmony_sample_clusters")
-
-harmony_object_sample_clusters_plot <- DimPlot(harmony_object_sample, reduction = "umap", 
-                                     group.by ="harmony_sample_clusters") + ggtitle("Harmony integrated data clusters - Sample")
-
-
- 
-uncorrected_clusters_sample_plot + harmony_object_sample_clusters_plot
 
 
 

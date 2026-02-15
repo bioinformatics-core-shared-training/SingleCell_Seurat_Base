@@ -7,20 +7,10 @@ output:
     toc_float: true
     toc_depth: 3
     number_sections: true
-    pandoc_args: ["--number-offset", "4"] # TOC will start at 5
+    pandoc_args: ["--number-offset", "6"] # TOC will start at 7
     code_folding: show
     css: ../css/boxes.css
 ---
-
-```{r setup, include=FALSE, purl=FALSE}
-# Move all the course files to the `course_files` folder
-# This setup makes sure the working directory is set to this folder
-# All paths are relative to it, so participant scripts work when we purl it
-knitr::opts_chunk$set(echo = TRUE,
-                      root.dir = here::here("course_files"))
-knitr::opts_knit$set(root.dir = here::here("course_files"))
-set.seed(123)
-```
 
 # Dataset Integration
 
@@ -84,7 +74,7 @@ We will revert back to the filtered 500 cell dataset that we started the day wit
 
 ```{r split}
 # Load the data
-seurat_object <- readRDS("../RObjects/Filtered.500.rds")
+seurat_object <- readRDS("RObjects/Filtered.500.rds")
 # Split the data by sample group
 seurat_object[["RNA"]] <- split(seurat_object[["RNA"]],
                                 f = seurat_object$SampleGroup)
@@ -150,7 +140,7 @@ about genes that are specific to particular cell types).
 
 According to the biology of our experiment, we expect the samples to have different some cell type compositions but the majority of the data should have cell types in common.
 
-# Integrate Data
+## Integrate Data
 
 Seurat allows us to integrate our data using its `IntegrateLayers` function. This function takes the layers of the RNA assay that we split into and integrates them using a specified batch correction method. There are 4 methods wrapped in this function:
 
@@ -161,7 +151,7 @@ Seurat allows us to integrate our data using its `IntegrateLayers` function. Thi
 
 Another popular method Mutual Nearest Neighbours (MNN) is not wrapped in this function but can be run using the `RunFastMNN` function from the `SeuratWrappers` package. 
 
-## Correct the data - Harmony
+### Correct the data - Harmony
 
 Harmony, [Korsunsky et al. 2019](https://www.nature.com/articles/s41592-019-0619-0)  is a method that uses an iterative clustering and correction approach to remove batch effects. It is based on the idea of "harmonizing" the data by finding clusters of cells that are similar across batches and then adjusting the data to make those clusters more similar. It does not edit the raw expresion values but creates a corrected embedding space that can be used for downstream analysis.
 
@@ -216,6 +206,8 @@ harmony_plot + harmony_clusters_plot
 
 We can see that the cells are now grouped together more by cluster rather than by sample, suggesting that the batch effect has been removed. 
 
+### Exercise
+
 :::exercise
 
 We have just carried out the integration using harmony with data processed separately at the sample group level. Try running the integration with data processed at the sample level and see if you get a different result.
@@ -228,9 +220,9 @@ We have just carried out the integration using harmony with data processed separ
 
 <details><summary>Answer</summary>
 
-```{r sample_level}
+```{r sample_level, purl=FALSE}
 # Read in our filtered data
-seurat_object_sample <- readRDS("../RObjects/Filtered.500.rds")
+seurat_object_sample <- readRDS("RObjects/Filtered.500.rds")
 
 # Split the data by sample name
 seurat_object_sample[["RNA"]] <- split(seurat_object_sample[["RNA"]],
@@ -265,7 +257,7 @@ uncorrected_clusters_sample_plot
 
 ```
 
-```{r harmony_sample}
+```{r harmony_sample, purl=FALSE}
 # Run Harmony integration
 harmony_object_sample <- IntegrateLayers(object = seurat_object_sample,
                                   method = HarmonyIntegration,
@@ -300,7 +292,7 @@ uncorrected_clusters_sample_plot + harmony_object_sample_clusters_plot
 
 :::
 
-## Adjusting theta
+### Adjusting theta
 
 The `theta` parameter controls the diversity of datasets within clusters, with higher values leading to more diverse clusters. If we have a strong batch effect we may want to increase this value to encourage more mixing of the batches within clusters. However, if we have a weaker batch effect or if we are concerned about over-correction we may want to decrease this value to allow for more batch-specific clusters. In our data we know we should have some celltypes that are batch specific so we may want to try a lower value.
 
@@ -334,9 +326,9 @@ harmony_object_theta_plot + harmony_object_theta_clusters_plot
 ```
 
 
-# Correction Diagnostics
+## Correction Diagnostics
 
-## Has the correction worked?
+### Has the correction worked?
 
 We can visually assess whether the correction has worked by looking at the UMAP plots like the above to see if the cells are grouped together more by cluster rather than by sample, this is an indication that the batch effect has been removed. If we have enough cells we can also look at the distribution of samples within clusters to see if they are more mixed after integration. With our downsampled dataset this is difficult.
 
@@ -362,7 +354,7 @@ data.frame(Cluster = harmony_object_theta$harmony_theta_01_clusters, Sample = ha
 
 In the corrected barplot we have less clusters and the clusters are more mixed across samples, suggesting that the batch effect has been removed. However, we can still see some clusters that are mostly made up of cells from a single sample. Biologically this is not unexpected so this should reassure us that the correction has done what it should.
 
-## Has the correction over worked?
+### Has the correction over worked?
 
 From our plots we can see that the cells have been more integrated, however we must also ensure that in doing this we have not removed genuine biological heterogeneity. 
 
@@ -424,7 +416,7 @@ ari.T
 
 We can see that integrating on samples a gives us a worse Adjusted Rand Index compared to sample group and decreasing the `theta` parameter gives us a better Adjusted Rand Index, suggesting that the integration with `theta = 0.1` has preserved more of the within batch heterogeneity than the other two integrations. An ARI of 0.59 is still less that ideal and so we may want to try other parameter changes or algorithms other than Harmony.
 
-# Our final dataset
+## Our final dataset
 
 Once we are happy with the integration we can rejoin our dataset for the downstream analyis. We must make sure we specify the correct assay to rejoin, in this case the "RNA" assay. The current active assay is "SCT" but the "RNA" assay contains the original, uncorrected data that we want to use for downstream analyses and is what needs to be rejoined.
 

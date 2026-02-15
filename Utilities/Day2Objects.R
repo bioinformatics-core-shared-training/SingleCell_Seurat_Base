@@ -50,4 +50,29 @@ seurat_object_full <- RunUMAP(seurat_object_full,
 saveRDS(seurat_object_500, file = "../RObjects/DimRed.500.rds")
 saveRDS(seurat_object_full, file = "../RObjects/DimRed.full.rds")
 
-###### Intergration ######
+###### Integration ######
+
+DIobj.500 <- readRDS("../RObjects/Filtered.500.rds")
+DIobj.500[["RNA"]] <- split(DIobj.500[["RNA"]],
+                                f = DIobj.500$SampleGroup)
+DIobj.500 <- SCTransform(
+  DIobj.500,
+  assay = "RNA",
+  vars.to.regress = "percent.mt",
+  verbose = FALSE
+)
+DIobj.500 <- RunPCA(DIobj.500, 
+                        features = VariableFeatures(object = DIobj.500))
+
+DIobj.500 <- IntegrateLayers(object = DIobj.500, 
+                                        method = HarmonyIntegration,
+                                        orig.reduction = "pca", 
+                                        new.reduction = "harmony",
+                                        theta = 0.1)
+
+DIobj.500 <- RunUMAP(DIobj.500,
+                                reduction = "harmony",
+                                dims = 1:15)
+DIobj.500 <- JoinLayers(DIobj.500, assay = "RNA")
+
+saveRDS(DIobj.500, file = "../RObjects/DI.500.rds")
