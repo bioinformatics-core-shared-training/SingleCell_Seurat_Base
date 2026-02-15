@@ -24,8 +24,6 @@ set.seed(123)
 
 # Dataset Integration
 
-# Introduction
-
 Often, single-cell experiments are done by processing samples in multiple batches. 
 This may be related to logistical constraints such as the inability to run all
 experimental conditions in parallel, or more extreme cases where samples are
@@ -66,7 +64,7 @@ Seurat makes it easy for us to use different batch correction methods but we mus
 
 There are several steps to deciding on our batch correction. First we must examine our uncorrected data and decide if we think a correction is needed. Then we run a correction method and visualise the results. Finally, we must assess the results and decide if we are happy with the correction or if we need to adjust the parameters or try a different method.
 
-```{r libraries}
+```{r libraries, warn=FALSE, message=FALSE}
 library(Seurat)
 library(sctransform)
 library(glmGamPoi)
@@ -181,6 +179,8 @@ PCA embeds cells into a space with reduced dimensionality. Harmony accepts the c
 
 It does not assume that all cell types are shared across batches and can therefore deal with unique cell types in different batches. 
 
+There are some parameters that can be adjusted when running Harmony. These aren't explicity part of the the `IntegrateLayers` function but can be passed to the HarmonyIntegration method underneath. For example, the `theta` parameter (diversity clustering penalty parameter) controls the diversity of datasets within clusters, with higher values leading to more diverse clusters. The `lambda` parameter (Ridge Regression penalty parameter) controls the strength of the correction, with higher values leading to stronger corrections. The `sigma` parameter (width of soft kmeans clusters) controls the bandwidth of the Gaussian kernel used in the correction, with higher values leading to smoother corrections. In practice we mostly adjust `theta`. The default is 2.
+
 ```{r harmony}
 # Run Harmony integration
 harmony_object <- IntegrateLayers(object = seurat_object, 
@@ -207,7 +207,7 @@ harmony_plot <- DimPlot(harmony_object,
                         group.by = "SampleName") + 
   ggtitle("Harmony integrated data")
 harmony_clusters_plot <- DimPlot(harmony_object, reduction = "umap", 
-                                     group.by ="harmony_clusters") + ggtitle("Harmoney data clusters")
+                                     group.by ="harmony_clusters") + ggtitle("Harmony data clusters")
  
 harmony_plot + harmony_clusters_plot     
 
@@ -228,13 +228,139 @@ We have just carried out the integration using harmony with data processed separ
 
 <details><summary>Answer</summary>
 
+```{r sample_level}
+# Read in our filtered data
+seurat_object_sample <- readRDS("../RObjects/Filtered.500.rds")
+
+# Split the data by sample name
+seurat_object_sample[["RNA"]] <- split(seurat_object_sample[["RNA"]],
+                                f = seurat_object_sample$SampleName)
+# Re-process, Seurat will treat each sample separately
+seurat_object_sample <- SCTransform(
+  seurat_object_sample,
+  assay = "RNA",
+  vars.to.regress = "percent.mt",
+  verbose = FALSE
+)
+seurat_object_sample <- RunPCA(seurat_object_sample, 
+                         features = VariableFeatures(object = seurat_object_sample))
+seurat_object_sample <- RunUMAP(seurat_object_sample,
+                         reduction = "pca",
+                         dims = 1:15)
+uncorrected_plot_sample <- DimPlot(seurat_object_sample,
+                            reduction = "umap",
+                            group.by = "SampleName") + 
+  ggtitle("Uncorrected data - Sample")
+
+seurat_object_sample <- FindNeighbors(seurat_object_sample, 
+                                      reduction = "pca",
+                                dims = 1:15)
+seurat_object_sample <- FindClusters(seurat_object_sample, 
+                              cluster.name = "uncorrected_clusters")
+
+uncorrected_clusters_sample_plot <- DimPlot(seurat_object, reduction = "umap", 
+                                     group.by ="uncorrected_clusters") + ggtitle("Uncorrected data clusters - Sample")
+
+uncorrected_clusters_sample_plot
+
+```
+
+```{r harmony_sample}
+# Run Harmony integration
+harmony_object_sample <- IntegrateLayers(object = seurat_object_sample,
+                                  method = HarmonyIntegration,
+                                  orig.reduction = "pca",
+                                  new.reduction = "harmony_sample")
+harmony_object_sample <- RunUMAP(harmony_object_sample,
+                          reduction = "harmony_sample",
+                          dims = 1:15)
+harmony_object_sample_plot <- DimPlot(harmony_object_sample, 
+                                     reduction = "umap", 
+                                     group.by = "SampleName") + 
+  ggtitle("Harmony integrated data - Sample")
+
+uncorrected_plot_sample + harmony_object_sample_plot
+
+harmony_object_sample <- FindNeighbors(harmony_object_sample, 
+                                       reduction = "harmony_sample",
+                                dims = 1:15)
+harmony_object_sample <- FindClusters(harmony_object_sample, 
+                              cluster.name = "harmony_sample_clusters")
+
+harmony_object_sample_clusters_plot <- DimPlot(harmony_object_sample, reduction = "umap", 
+                                     group.by ="harmony_sample_clusters") + ggtitle("Harmony integrated data clusters - Sample")
+
+
+ 
+uncorrected_clusters_sample_plot + harmony_object_sample_clusters_plot
+
+```
+
 </details>
 
 :::
 
+## Adjusting theta
+
+The `theta` parameter controls the diversity of datasets within clusters, with higher values leading to more diverse clusters. If we have a strong batch effect we may want to increase this value to encourage more mixing of the batches within clusters. However, if we have a weaker batch effect or if we are concerned about over-correction we may want to decrease this value to allow for more batch-specific clusters. In our data we know we should have some celltypes that are batch specific so we may want to try a lower value.
+
+```{r theta}
+# Run Harmony integration with adjusted theta
+harmony_object_theta <- IntegrateLayers(object = seurat_object, 
+                                  method = HarmonyIntegration,
+                                  orig.reduction = "pca", 
+                                  new.reduction = "harmony_theta_01",
+                                  theta = 0.1)
+
+harmony_object_theta <- RunUMAP(harmony_object_theta,
+                          reduction = "harmony_theta_01", 
+                          dims = 1:15)
+harmony_object_theta_plot <- DimPlot(harmony_object_theta, 
+                                     reduction = "umap", 
+                                     group.by = "SampleName") + 
+  ggtitle("Harmony integrated data with theta = 0.1")
+
+harmony_object_theta <- FindNeighbors(harmony_object_theta, 
+                                       reduction = "harmony_theta_01",
+                                dims = 1:15)
+harmony_object_theta <- FindClusters(harmony_object_theta,
+                              cluster.name = "harmony_theta_01_clusters")
+harmony_object_theta_clusters_plot <- DimPlot(harmony_object_theta, 
+                                              reduction = "umap", 
+                                              group.by ="harmony_theta_01_clusters") + 
+  ggtitle("Harmony integrated data clusters with theta = 0.1")
+
+harmony_object_theta_plot + harmony_object_theta_clusters_plot
+```
+
+
 # Correction Diagnostics
 
 ## Has the correction worked?
+
+We can visually assess whether the correction has worked by looking at the UMAP plots like the above to see if the cells are grouped together more by cluster rather than by sample, this is an indication that the batch effect has been removed. If we have enough cells we can also look at the distribution of samples within clusters to see if they are more mixed after integration. With our downsampled dataset this is difficult.
+
+We can also make a barplots to check if the clusters have mixed sufficiently.
+
+```{r barplotUnc}
+#Make a barplot of the clusters and samples
+data.frame(Cluster = seurat_object$uncorrected_clusters, Sample = seurat_object$SampleName) %>%
+  ggplot(aes(x = Cluster)) +
+    geom_bar(aes(fill = Sample), position = "fill") +
+    labs(title = "Uncorrected data") +
+  scale_y_continuous(labels = scales::percent)
+```
+
+```{r barplotHarm}
+#Make a barplot of the clusters and samples
+data.frame(Cluster = harmony_object_theta$harmony_theta_01_clusters, Sample = harmony_object_theta$SampleName) %>%
+  ggplot(aes(x = Cluster)) +
+    geom_bar(aes(fill = Sample), position = "fill") +
+    labs(title = "Harmony Corrected data") +
+  scale_y_continuous(labels = scales::percent)
+```
+
+In the corrected barplot we have less clusters and the clusters are more mixed across samples, suggesting that the batch effect has been removed. However, we can still see some clusters that are mostly made up of cells from a single sample. Biologically this is not unexpected so this should reassure us that the correction has done what it should.
 
 ## Has the correction over worked?
 
@@ -243,7 +369,21 @@ From our plots we can see that the cells have been more integrated, however we m
 We can do this visually by looking at markers of celltypes. For example if cells of different types merge together after integration this may be an indication that the integration has removed some of the biological signal. We can also look at the expression of known marker genes for different cell types to see if they are still expressed in the expected clusters after integration.
 
 ```{r markers}
+# CD79A (B cells)
+# CST3 (monocytes)
+# CD3D (T cells)
+# HBA1 (erythrocytes)
+
+FeaturePlot(seurat_object, features = c("CD79A", "CST3", "CD3D", "HBA1"), 
+            reduction = "umap")
+
+
+FeaturePlot(harmony_object_theta, features = c("CD79A", "CST3", "CD3D", "HBA1"), 
+            reduction = "umap")
+
 ```
+
+We can see that for all of these celltype markers the expression is still in the expected clusters after integration, suggesting that the integration has not removed too much of the biological signal.
 
 Another method is to use the `Adjusted Rand Index`. We can use the adjusted Rand index to quantify the agreement between the clusterings before and after batch correction. 
 
@@ -253,29 +393,51 @@ Larger indices are more desirable as this indicates that within-batch
 heterogeneity is preserved, though this must be balanced against the ability of
 each method to actually perform batch correction.
 
-We can use the `pairwiseRand` function from the `bluster` package. The input is a list of clusterings, in this case the clusters from the uncorrected data and the clusters from the Harmony integrated data.
+We can use the `pairwiseRand` function from the `bluster` package. The input is a list of clusterings. We can test all three of our integrated clusterings against their uncorrected clustering to see how much they differ.
 
-```{r ari}
+```{r ariSG}
 library(bluster)
 # Calculate the adjusted Rand index
-ari <- pairwiseRand(list(uncorrected = seurat_object$uncorrected_clusters,
-                         harmony = harmony_object$harmony_clusters, 
-                         mode = "index"))
+# Input is a vector of the clusters
+ari.SG <- pairwiseRand(seurat_object$uncorrected_clusters,
+                    harmony_object$harmony_clusters,
+                         mode = "index")
 
-ari 
+ari.SG
 ```
+
+```{r ariSN}
+ari.SN <- pairwiseRand(seurat_object_sample$uncorrected_clusters,
+                    harmony_object_sample$harmony_sample_clusters,
+                         mode = "index")
+
+ari.SN
+```
+
+```{r ariTheta}
+ari.T <- pairwiseRand(seurat_object$uncorrected_clusters,
+                    harmony_object_theta$harmony_theta_01_clusters,
+                         mode = "index")
+
+ari.T
+```
+
+We can see that integrating on samples a gives us a worse Adjusted Rand Index compared to sample group and decreasing the `theta` parameter gives us a better Adjusted Rand Index, suggesting that the integration with `theta = 0.1` has preserved more of the within batch heterogeneity than the other two integrations. An ARI of 0.59 is still less that ideal and so we may want to try other parameter changes or algorithms other than Harmony.
 
 # Our final dataset
 
-Once we are happy with the integration we can rejoin our dataset for the downstream analyis.
+Once we are happy with the integration we can rejoin our dataset for the downstream analyis. We must make sure we specify the correct assay to rejoin, in this case the "RNA" assay. The current active assay is "SCT" but the "RNA" assay contains the original, uncorrected data that we want to use for downstream analyses and is what needs to be rejoined.
 
 ```{r rejoin}
 # Rejoin the data
-harmony_object <- JoinLayers(harmony_object)
+harmony_object_theta <- JoinLayers(harmony_object_theta, assay = "RNA")
 ```
 
 A warning: Do not use the batch corrected values for gene based downstream analyses like differential expression. Instead, you should use the original, uncorrected data (in the "RNA or "SCT" layers) for gene-based analyses and use the batch-corrected data for visualisation and clustering.
 
 Harmony is often faster for large datasets, whereas MNN is often preferred when strong, non-linear batch effects are present.
 
+```{r session_info}
+sessionInfo()
+```
 
