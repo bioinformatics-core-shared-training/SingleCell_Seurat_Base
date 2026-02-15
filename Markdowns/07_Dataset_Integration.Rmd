@@ -232,6 +232,39 @@ We have just carried out the integration using harmony with data processed separ
 
 :::
 
+# Correction Diagnostics
+
+## Has the correction worked?
+
+## Has the correction over worked?
+
+From our plots we can see that the cells have been more integrated, however we must also ensure that in doing this we have not removed genuine biological heterogeneity. 
+
+We can do this visually by looking at markers of celltypes. For example if cells of different types merge together after integration this may be an indication that the integration has removed some of the biological signal. We can also look at the expression of known marker genes for different cell types to see if they are still expressed in the expected clusters after integration.
+
+```{r markers}
+```
+
+Another method is to use the `Adjusted Rand Index`. We can use the adjusted Rand index to quantify the agreement between the clusterings before and after batch correction. 
+
+The adjusted Rand index gives us a measure of the proportion of pairs of cells that have the same relative status in both clusterings - i.e. they were are in the same cluster in both clusterings or they are in different clusters in both clusterings, as oppose to e.g. being in the same cluster in one clustering and different clusters in the other.
+
+Larger indices are more desirable as this indicates that within-batch
+heterogeneity is preserved, though this must be balanced against the ability of
+each method to actually perform batch correction.
+
+We can use the `pairwiseRand` function from the `bluster` package. The input is a list of clusterings, in this case the clusters from the uncorrected data and the clusters from the Harmony integrated data.
+
+```{r ari}
+library(bluster)
+# Calculate the adjusted Rand index
+ari <- pairwiseRand(list(uncorrected = seurat_object$uncorrected_clusters,
+                         harmony = harmony_object$harmony_clusters, 
+                         mode = "index"))
+
+ari 
+```
+
 # Our final dataset
 
 Once we are happy with the integration we can rejoin our dataset for the downstream analyis.
@@ -240,6 +273,8 @@ Once we are happy with the integration we can rejoin our dataset for the downstr
 # Rejoin the data
 harmony_object <- JoinLayers(harmony_object)
 ```
+
+A warning: Do not use the batch corrected values for gene based downstream analyses like differential expression. Instead, you should use the original, uncorrected data (in the "RNA or "SCT" layers) for gene-based analyses and use the batch-corrected data for visualisation and clustering.
 
 Harmony is often faster for large datasets, whereas MNN is often preferred when strong, non-linear batch effects are present.
 
