@@ -1,0 +1,265 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+subtitle: "Clustering"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    pandoc_args: ["--number-offset", "7"] # TOC will start at 8
+    code_folding: show
+    css: ../css/boxes.css
+---
+
+# Clustering
+
+Once we have normalized the data and removed confounders we can carry out
+analyses that are relevant to the biological questions at hand. The exact nature
+of the analysis depends on the data set. One of the most promising applications
+of scRNA-seq is *de novo* discovery and annotation of cell-types based on
+transcription profiles. This requires the identification of groups of cells
+based on the similarities of the transcriptomes without any prior knowledge of
+the label a.k.a. unsupervised clustering. To avoid the challenges caused by the
+noise and high dimensionality of the scRNA-seq data, clustering is performed
+after feature selection and dimensionality reduction. For data that has not 
+required batch correction this would usually be based on the PCA output. As our data has
+required batch correction we will use the "corrected" reducedDims data.
+
+We will focus here on graph-based clustering, however, it is also possible to apply
+hierarchical clustering and k-means clustering on smaller data sets - see the
+[OSCA
+book](http://bioconductor.org/books/release/OSCA.basic/clustering.html#vector-quantization-with-k-means)
+for details. Graph-base clustering is a more recent development and better
+suited for scRNA-seq, especially large data sets.
+
+```{r libraries}
+library(Seurat)
+library(sctransform)
+library(glmGamPoi)
+library(tidyverse)
+library(patchwork)
+```
+
+## Load the data
+
+We will load our integrated seurat object that we created in the previous section. The data has been QC'd, downsampled to 500 cells per sample, normalized, batch corrected and dimensionality reduced. We are now ready to carry out clustering of the data to begin to add our biological context. 
+
+```{r loadData}
+# Load the data
+seurat_object <- readRDS("RObjects/DI.500.rds")
+
+DefaultAssay(seurat_object)
+```
+## Graph-based clustering overview
+
+Graph-based clustering entails building a nearest-neighbour (NN) graph using
+cells as nodes and their similarity as edges, then identifying 'communities' of
+cells within the network. A graph-based clustering method has three key
+parameters:
+
+* How many neighbors are considered when constructing the graph  
+* What scheme is used to weight the edges   
+* Which community detection algorithm is used to define the clusters
+
+## Connecting nodes (cells) based on nearest neighbours
+
+Two types of NN graph may be used: "K nearest-neighbour" (KNN) and "shared
+nearest-neighbour" (SNN). In a KNN graph, two nodes (cells), say A and B, are
+connected by an edge if the distance between them is amongst the *k* smallest
+distances from A to other cells. In an SNN graph A and B are connected if the
+distance is amongst the *k* samllest distances from A to other cells and also
+among the *k* smallest distance from B to other cells.
+
+![](Images/KNNvSNN.svg){width=40%}
+
+In the figure above, if *k* is 5, then A and B would be connected in a KNN graph
+as B is one of the 5 closest cells to A, however, they would not be connected in
+an SNN graph as B has 5 other cells that are closer to it than A.
+
+The value of *k* can be roughly interpreted as the anticipated size of the
+smallest subpopulation" (see [`scran`'s `buildSNNGraph()`
+manual](https://rdrr.io/bioc/scran/man/buildSNNGraph.html)).
+
+The plot below shows the same data set as a network built using three different
+numbers of neighbours: 5, 15 and 25 (from
+[here](https://biocellgen-public.svi.edu.au/mig_2019_scrnaseq-workshop/clustering-and-cell-annotation.html#example-1.-graph-based-clustering-deng-dataset)).
+
+![](Images/bioCellGenGraphDeng.png)
+
+## Weighting the edges
+
+The edges between nodes (cells) can be weighted based on the similarity of the
+cells; edges connecting cells that are more closely related will have a higher
+weight. The three common methods for this weighting are (see [the *bluster* 
+package documentation for the `makeSNNGraph` function](https://rdrr.io/github/LTLA/bluster/man/makeSNNGraph.html)):
+
+* **rank** - the weight is based on the highest rank of the shared nearest
+neighbours  
+* **number** - the weight is based the number of nearest neighbours in common
+between the two cells  
+* **jaccard** - the [Jaccard index](https://en.wikipedia.org/wiki/Jaccard_index) 
+of the two cells' sets of nearest neighbours.  
+
+## Grouping nodes (cells) into clusters
+
+Clusters are identified using an algorithm that interprets the connections
+of the graph to find groups of highly interconnected cells. A variety of
+different algorithms are available to do this, in these materials we will focus
+on three methods: walktrap, louvain and leiden. See the [OSCA
+book](http://bioconductor.org/books/release/OSCA.basic/clustering.html#overview-1)
+for details of others available in *scran*.
+
+## Modularity
+
+Several methods to detect clusters ('communities') in networks rely on a metric
+called "modularity". For a given partition of cells into clusters, modularity
+measures how separated clusters are from each other, based on the difference
+between the observed and expected weight of edges between nodes. For the whole
+graph, the closer to 1 the better.
+
+## Pros and Cons of graph based clustering
+
+* Pros:
+    + fast and memory efficient (avoids the need to construct a distance matrix
+    for all pairs of cells)
+    + no assumptions on the shape of the clusters or the distribution of cells
+    within each cluster
+    + no need to specify a number of clusters to identify (but the size of the
+    neighbourhood used affects the size of clusters)
+* Cons:
+    + loss of information beyond neighboring cells, which can affect community detection in regions with many cells.
+
+## Clustering with Seurat
+
+In `Seurat` we have two functions to carry out graph-based clustering: `FindNeighbors()` and `FindClusters()`. The former constructs the nearest neighbour graph and the latter identifies clusters within the graph.
+
+The `FindNeighbors()` function computes the nearest neighbours in our dataset using a Shared Nearest Neighbour graph based on the dimensionality reduction specified by the `reduction` parameter and the number of nearest neighbours specified by the `k.param` parameter. Since we have batch corrected our data we should use the harmony correct reduction for this. If we had chosen not to batch correct we would use the PCA output. We can also set the number of reduced dimmensions that are used. We will use the first 15.
+
+The main parameter we will adjust here is the value of `k`. `k` is the number of nearest neighbours to consider when constructing the graph. The default is 20, but we will experiment with this value to find the best fit for our data. A smaller value of k will lead to more clusters, while a larger value will lead to fewer clusters.
+
+```{r findNeighbors}
+seurat_object <- FindNeighbors(seurat_object, 
+                               reduction = "harmony", 
+                               k.param = 20, # k = 20 is the default
+                               dims = 1:15)
+```
+
+The `FindClusters()` function identifies clusters in the nearest neighbour graph using a community detection algorithm. The `resolution` parameter controls the granularity of the clustering, with higher values leading to more clusters. The default is 0.8, but again we will experiment with this value to find the best fit for our data. Using the `cluster.name` argument allows us to set the column name that will appear in the meta.data slot of our object.
+
+```{r findClusters}
+seurat_object <- FindClusters(seurat_object,
+                             resolution = 0.8, # default is 0.8
+                             algorithm = 1, # default is 1 (louvain)
+                             cluster.name = "Louvain_k20_res0.8") 
+```
+
+There are many different community detection algorithms available, and the `algorithm` parameter allows us to choose which one to use of those avaliable in Seurat. The default is 1 (louvain), but we can also choose leiden (4). The choice of algorithm can affect the number and composition of clusters identified, so it may be worth trying different algorithms to see which one gives the best results for your data.
+
+## The Louvain method
+
+With the Louvain method, nodes are first assigned their own community. This
+hierarchical agglomerative method then progresses in two-step iterations: 
+
+1. nodes are re-assigned one at a time to the community for which they increase
+modularity the most, if at all. 
+2. a new, 'aggregate' network is built where nodes are the communities formed in
+the previous step.
+
+These two steps are repeated until modularity stops increasing. The diagram
+below is copied from [this
+article](https://www.nature.com/articles/s41598-019-41695-z#Fig1).
+
+<img src="Images/leiden_Fig1_HTML.png" style="margin:auto; display:block" />
+
+```{r louvain}
+
+DimPlot(seurat_object, reduction = "umap", group.by = "Louvain_k20_res0.8")
+
+```
+
+### Exercise 1
+
+:::exercise
+
+Experiment with different values of `k` and `resolution` parameters in the `FindNeighbors()` and `FindClusters()` functions, respectively. How do these parameters affect the number and composition of clusters identified? Try to find a combination of parameters that gives you a reasonable number of clusters that are well-separated in the UMAP plot.
+
+1. Start with resolution, try 0.4 and 1.6
+2. Then try different values of k, try 10 and 50
+
+Give them sensible names using the cluster.name argument. How do they alter your clusterings as displayed on your UMAP?
+
+<details><summary>Answer</summary>
+
+</details>
+
+:::
+
+## The Leiden method
+
+The Leiden method improves on the Louvain method by guaranteeing that at each
+iteration clusters are connected and well-separated. The method includes an
+extra step in the iterations: after nodes are moved (step 1), the resulting
+partition is refined (step2) and only then the new aggregate network made, and
+refined (step 3). The diagram below is copied from [this
+article](https://www.nature.com/articles/s41598-019-41695-z#Fig3).
+
+<img src="../Images/leiden_Fig3_HTML.png" style="margin:auto; display:block" />
+
+### Exercise 2
+
+:::exercise
+
+Repeat the clustering using the Leiden method (algorithm = 4) and compare the results to the Louvain method. Do you see any differences in the clusters identified? 
+
+<details><summary>Answer</summary>
+
+</details>
+
+:::
+
+# Assessing cluster behaviour
+
+A variety of metrics are available to aid us in assessing the behaviour of a 
+particular clustering method on our data. These can help us in assessing how
+well defined different clusters within a single clustering are in terms of
+the relatedness of cells within the cluster and the how well separated that
+cluster is from cells in other clusters, and to compare the results of 
+different clustering methods or parameter values (e.g. different values
+for *k*).
+
+We will consider "Silhouette width" as it is the most commonly used. Further details and 
+other metrics are described in the ["Advanced" section of the OSCA book](http://bioconductor.org/books/release/OSCA.advanced/clustering-redux.html#quantifying-clustering-behavior).
+
+## Silhouette width
+
+The silhouette width (so named after the look of the traditional graph for
+plotting the results) is a measure of how closely related cells within cluster
+are to one another versus how closely related cells in the cluster are to cells
+in other clusters. This allows us to assess cluster separation.
+
+For each cell in the cluster we calculate the the average distance to all other
+cells in the cluster and the average distance to all cells in the next closest cluster.
+The cells silhouette width is the difference between these divided by the
+maximum of the two values. Cells with a large silhouette are strongly related to
+cells in the cluster, cells with a negative silhouette width are more closely
+related to other clusters.
+
+```{r silhouette}
+# make beeswarm and umap plot
+```
+
+```{r silhouette2}
+# make cluster number and silhouette width plot with multiple k values
+```
+
+### Exercise 3
+
+:::exercise
+
+Decide on resolution and k
+
+:::
+
+## Check clustering with known markers
+
