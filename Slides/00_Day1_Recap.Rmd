@@ -120,7 +120,7 @@ knitr::include_graphics('../Images/droplet_overview.png')
 * access counts: 
 
     ```r
-    GetAssayData(seurat_object, assay = "RNA", layer = "counts")
+    seurat_object[["RNA"]]$counts
     ```
 
 * access cell metadata: 

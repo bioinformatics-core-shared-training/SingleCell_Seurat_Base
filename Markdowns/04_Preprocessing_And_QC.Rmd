@@ -103,9 +103,7 @@ This is not strictly necessary but it can be easier to work with the raw counts 
 
 ```{r raw_counts}
 # Pull out the raw counts matrix for the RNA assay for exploratory analysis and QC
-raw_counts <- GetAssayData(etv6_runx1_1,
-                           assay = "RNA",
-                           layer = "counts")
+raw_counts <- etv6_runx1_1[["RNA"]]$counts
 ```
 
 ## Properties of Single cell data
@@ -355,9 +353,7 @@ We can do this using the `rowSums()` function to calculate the total counts for 
 
 ```{r filter_undetected_genes}
 # Get the raw counts to work with
-multi_raw_counts <- GetAssayData(multi_seurat_object,
-                                 assay = "RNA",
-                                 layer = "counts")
+multi_raw_counts <- multi_seurat_object[["RNA"]]$counts
 
 # How many genes are detected in the whole dataset?
 table(rowSums(multi_raw_counts) > 0)
@@ -372,7 +368,7 @@ filtered_multi_seurat_object <- subset(
 filtered_multi_seurat_object
 
 # Confirm all of these now have at least 1 count across all cells
-filt_raw_counts <- GetAssayData(filtered_multi_seurat_object, assay = "RNA", layer = "counts")
+filt_raw_counts <- filtered_multi_seurat_object[["RNA"]]$counts
 table(rowSums(filt_raw_counts) > 0)
 ```
 We don't actually need to do this explicitly. `CreateSeuratObject` has an argument called `min.cells`. The documentation states: "Include features detected in at least this many cells". so by changing this to `1` (default is 0) when we create the object at the start we don't need to worry about this step.

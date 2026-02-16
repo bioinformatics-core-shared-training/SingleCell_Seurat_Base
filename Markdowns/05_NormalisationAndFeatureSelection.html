@@ -1699,7 +1699,7 @@ seurat_pbmmc1 &lt;- subset(seurat_object,
                         subset = SampleName == &quot;PBMMC-1&quot;)
 
 # Remove genes that are not expressed in any of the 500 cells in this sample
-pbmmc1_expressed_genes &lt;- rowSums(GetAssayData(seurat_pbmmc1, assay = &quot;RNA&quot;, layer = &quot;counts&quot;)) &gt; 0
+pbmmc1_expressed_genes &lt;- rowSums(seurat_pbmmc1[[&quot;RNA&quot;]]$counts) &gt; 0
 seurat_pbmmc1 &lt;- seurat_pbmmc1[pbmmc1_expressed_genes, ]</code></pre>
 </div>
 <div id="why-normalise" class="section level2" number="1.2">
@@ -1717,7 +1717,7 @@ seurat_pbmmc1 &lt;- seurat_pbmmc1[pbmmc1_expressed_genes, ]</code></pre>
 <p>The plot below shows the total UMI counts per cell (transcript molecules) for 500 cells from the PBMMC-1 sample.</p>
 <pre class="r"><code># Plot the total UMI counts across cells
 # Get the raw counts data
-GetAssayData(seurat_pbmmc1, assay = &quot;RNA&quot;, layer = &quot;counts&quot;) %&gt;%
+seurat_pbmmc1[[&quot;RNA&quot;]]$counts %&gt;%
   # calculate the total UMI counts for each cell (column sums)
   colSums() %&gt;%
   # convert the named vector to a data frame with cell names and UMI counts
@@ -1760,7 +1760,7 @@ GetAssayData(seurat_pbmmc1, assay = &quot;RNA&quot;, layer = &quot;counts&quot;)
 <!-- Note: this code chunk is here so we purl it into the participant script -->
 <p>A common property of count data is that the variance increases with the mean (heteroscedasticity). Let’s explore this for our raw counts data by calculating the mean and variance for each gene across all cells and plotting the relationship.</p>
 <pre class="r"><code># Get the raw counts data from the object
-raw_cts &lt;- GetAssayData(seurat_pbmmc1, assay = &quot;RNA&quot;, layer = &quot;counts&quot;)
+raw_cts &lt;- seurat_pbmmc1[[&quot;RNA&quot;]]$counts
 
 # Calculate summary statistics for each gene
 gene_raw_stats &lt;- tibble(gene = rownames(raw_cts),
@@ -1849,7 +1849,7 @@ seurat_pbmmc1</code></pre>
 <p>We can see that the <code>NormalizeData</code> function has added a new layer named <code>data</code> to the RNA assay, which contains the normalised data. The raw counts are still available in the <code>counts</code> layer.</p>
 <p>Let’s see if this improved the mean-variance relationship in the data. Similarly to before, we calculate the mean and variance for each gene, but this time using the log-normalised data, and plot the relationship.</p>
 <pre class="r"><code># Get the log-normalised data from the object
-lognorm_cts &lt;- GetAssayData(seurat_pbmmc1, assay = &quot;RNA&quot;, layer = &quot;data&quot;)
+lognorm_cts &lt;- seurat_pbmmc1[[&quot;RNA&quot;]]$data
 gene_lognorm_stats &lt;- tibble(gene = rownames(lognorm_cts),
                              mean = rowMeans(lognorm_cts),
                              variance = rowVars(lognorm_cts))
@@ -1968,8 +1968,7 @@ seurat_pbmmc1</code></pre>
 # which are ranked by residual variance
 hvgs_sct &lt;- VariableFeatures(seurat_pbmmc1)
 head(hvgs_sct)</code></pre>
-<pre><code>## [1] &quot;LYZ&quot;             &quot;S100A8&quot;          &quot;S100A9&quot;          &quot;ENSG00000257764&quot;
-## [5] &quot;ACSM3&quot;           &quot;LGALS1&quot;</code></pre>
+<pre><code>## [1] &quot;LYZ&quot;             &quot;S100A8&quot;          &quot;S100A9&quot;          &quot;ENSG00000257764&quot; &quot;ACSM3&quot;           &quot;LGALS1&quot;</code></pre>
 <p>We can compare with the previously chosen variable genes from the log-normalised data to see how much overlap there is between the two methods.</p>
 <pre class="r"><code># Compare the variable genes selected
 # by vst on the raw data and from sctransform residual variance
@@ -1985,7 +1984,7 @@ length(intersect(hvgs_vst, hvgs_sct))</code></pre>
 <p>We look at the <code>scale.data</code> layer of the <code>SCT</code> assay, which contains the Pearson residuals of the model fit. These can be thought of as the variance-stabilised expression values, as the model has been fitted to account for the mean-variance relationship in the data.</p>
 <pre class="r"><code># Compare the mean-variance relationship for the sctransform-normalised data
 # Get summary statistics for the Pearson residuals from the sctransform normalisation
-vst_cts &lt;- GetAssayData(seurat_pbmmc1, assay = &quot;SCT&quot;, layer = &quot;scale.data&quot;)
+vst_cts &lt;- seurat_pbmmc1[[&quot;SCT&quot;]]$scale.data
 gene_vst_stats &lt;- tibble(gene = rownames(vst_cts),
                          mean = rowMeans(vst_cts),
                          variance = rowVars(vst_cts))
@@ -2006,16 +2005,12 @@ ggplot(gene_vst_stats, aes(x = mean, y = variance)) +
 <pre class="r"><code># Compare the total UMI counts per cell for the raw counts and sctransform-normalised data
 
 # get the total UMIs for raw UMIs
-raw_cts_total &lt;- GetAssayData(seurat_pbmmc1, 
-                              assay = &quot;RNA&quot;, 
-                              layer = &quot;counts&quot;) %&gt;%
+raw_cts_total &lt;- seurat_pbmmc1[[&quot;RNA&quot;]]$counts %&gt;%
   colSums() %&gt;%
   enframe(name = &quot;cell&quot;, value = &quot;total_counts&quot;)
 
 # get the total UMIs for sctransform-normalised counts
-sct_cts_total &lt;- GetAssayData(seurat_pbmmc1, 
-                              assay = &quot;SCT&quot;, 
-                              layer = &quot;counts&quot;) %&gt;%
+sct_cts_total &lt;- seurat_pbmmc1[[&quot;SCT&quot;]]$counts %&gt;%
   colSums() %&gt;%
   enframe(name = &quot;cell&quot;, value = &quot;total_counts&quot;)
 
@@ -2075,7 +2070,7 @@ seurat_hhd1 &lt;- subset(seurat_object,
                       subset = SampleName == &quot;HHD-1&quot;)
 
 # 2. Remove genes not expressed in this sample
-hhd1_expressed_genes &lt;- rowSums(GetAssayData(seurat_hhd1, assay = &quot;RNA&quot;, layer = &quot;counts&quot;)) &gt; 0
+hhd1_expressed_genes &lt;- rowSums(seurat_hhd1[[&quot;RNA&quot;]]$counts) &gt; 0
 seurat_hhd1 &lt;- seurat_hhd1[hhd1_expressed_genes, ]
 
 # 3. Apply log-normalisation
@@ -2099,19 +2094,19 @@ seurat_hhd1 &lt;- SCTransform(
 # Compare mean-variance relationships
 
 # Raw counts
-raw_cts_hhd1 &lt;- GetAssayData(seurat_hhd1, assay = &quot;RNA&quot;, layer = &quot;counts&quot;)
+raw_cts_hhd1 &lt;- seurat_hhd1[[&quot;RNA&quot;]]$counts
 gene_raw_stats_hhd1 &lt;- tibble(gene = rownames(raw_cts_hhd1),
                               mean = rowMeans(raw_cts_hhd1),
                               variance = rowVars(raw_cts_hhd1))
 
 # Log-normalised
-lognorm_cts_hhd1 &lt;- GetAssayData(seurat_hhd1, assay = &quot;RNA&quot;, layer = &quot;data&quot;)
+lognorm_cts_hhd1 &lt;- seurat_hhd1[[&quot;RNA&quot;]]$data
 gene_lognorm_stats_hhd1 &lt;- tibble(gene = rownames(lognorm_cts_hhd1),
                                   mean = rowMeans(lognorm_cts_hhd1),
                                   variance = rowVars(lognorm_cts_hhd1))
 
 # sctransform
-vst_cts_hhd1 &lt;- GetAssayData(seurat_hhd1, assay = &quot;SCT&quot;, layer = &quot;scale.data&quot;)
+vst_cts_hhd1 &lt;- seurat_hhd1[[&quot;SCT&quot;]]$scale.data
 gene_vst_stats_hhd1 &lt;- tibble(gene = rownames(vst_cts_hhd1),
                               mean = rowMeans(vst_cts_hhd1),
                               variance = rowVars(vst_cts_hhd1))
@@ -2187,10 +2182,9 @@ seurat_object &lt;- SCTransform(
 ## LAPACK: /usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.10.0  LAPACK version 3.10.0
 ## 
 ## locale:
-##  [1] LC_CTYPE=C.UTF-8       LC_NUMERIC=C           LC_TIME=C.UTF-8       
-##  [4] LC_COLLATE=C.UTF-8     LC_MONETARY=C.UTF-8    LC_MESSAGES=C.UTF-8   
-##  [7] LC_PAPER=C.UTF-8       LC_NAME=C              LC_ADDRESS=C          
-## [10] LC_TELEPHONE=C         LC_MEASUREMENT=C.UTF-8 LC_IDENTIFICATION=C   
+##  [1] LC_CTYPE=C.UTF-8       LC_NUMERIC=C           LC_TIME=C.UTF-8        LC_COLLATE=C.UTF-8     LC_MONETARY=C.UTF-8   
+##  [6] LC_MESSAGES=C.UTF-8    LC_PAPER=C.UTF-8       LC_NAME=C              LC_ADDRESS=C           LC_TELEPHONE=C        
+## [11] LC_MEASUREMENT=C.UTF-8 LC_IDENTIFICATION=C   
 ## 
 ## time zone: Europe/London
 ## tzcode source: system (glibc)
@@ -2199,76 +2193,46 @@ seurat_object &lt;- SCTransform(
 ## [1] stats     graphics  grDevices utils     datasets  methods   base     
 ## 
 ## other attached packages:
-##  [1] SparseArray_1.10.1 patchwork_1.3.2    lubridate_1.9.4    forcats_1.0.1     
-##  [5] stringr_1.6.0      dplyr_1.1.4        purrr_1.2.0        readr_2.1.5       
-##  [9] tidyr_1.3.1        tibble_3.3.0       ggplot2_4.0.1      tidyverse_2.0.0   
-## [13] glmGamPoi_1.22.0   sctransform_0.4.2  Seurat_5.3.1       SeuratObject_5.2.0
-## [17] sp_2.2-0          
+##  [1] SparseArray_1.10.1 patchwork_1.3.2    glmGamPoi_1.22.0   lubridate_1.9.4    forcats_1.0.1      stringr_1.6.0     
+##  [7] dplyr_1.1.4        purrr_1.2.0        readr_2.1.5        tidyr_1.3.1        tibble_3.3.0       ggplot2_4.0.1     
+## [13] tidyverse_2.0.0    sctransform_0.4.2  Seurat_5.3.1       SeuratObject_5.2.0 sp_2.2-0          
 ## 
 ## loaded via a namespace (and not attached):
-##   [1] RColorBrewer_1.1-3          jsonlite_2.0.0             
-##   [3] magrittr_2.0.4              spatstat.utils_3.2-0       
-##   [5] farver_2.1.2                rmarkdown_2.30             
-##   [7] vctrs_0.6.5                 ROCR_1.0-11                
-##   [9] DelayedMatrixStats_1.32.0   spatstat.explore_3.5-3     
-##  [11] htmltools_0.5.8.1           S4Arrays_1.10.0            
-##  [13] sass_0.4.10                 parallelly_1.45.1          
-##  [15] KernSmooth_2.23-26          bslib_0.9.0                
-##  [17] htmlwidgets_1.6.4           ica_1.0-3                  
-##  [19] plyr_1.8.9                  plotly_4.11.0              
-##  [21] zoo_1.8-14                  cachem_1.1.0               
-##  [23] igraph_2.2.1                mime_0.13                  
-##  [25] lifecycle_1.0.4             pkgconfig_2.0.3            
-##  [27] Matrix_1.7-4                R6_2.6.1                   
-##  [29] fastmap_1.2.0               MatrixGenerics_1.22.0      
-##  [31] fitdistrplus_1.2-4          future_1.67.0              
-##  [33] shiny_1.11.1                digest_0.6.38              
-##  [35] S4Vectors_0.48.0            rprojroot_2.1.1            
-##  [37] tensor_1.5.1                RSpectra_0.16-2            
-##  [39] irlba_2.3.5.1               GenomicRanges_1.62.0       
-##  [41] beachmat_2.26.0             labeling_0.4.3             
-##  [43] progressr_0.18.0            timechange_0.3.0           
-##  [45] spatstat.sparse_3.1-0       httr_1.4.7                 
-##  [47] polyclip_1.10-7             abind_1.4-8                
-##  [49] compiler_4.5.1              here_1.0.2                 
-##  [51] withr_3.0.2                 S7_0.2.1                   
-##  [53] fastDummies_1.7.5           MASS_7.3-65                
-##  [55] DelayedArray_0.36.0         tools_4.5.1                
-##  [57] lmtest_0.9-40               otel_0.2.0                 
-##  [59] httpuv_1.6.16               future.apply_1.20.0        
-##  [61] goftest_1.2-3               glue_1.8.0                 
-##  [63] nlme_3.1-168                promises_1.5.0             
-##  [65] grid_4.5.1                  Rtsne_0.17                 
-##  [67] cluster_2.1.8.1             reshape2_1.4.5             
-##  [69] generics_0.1.4              gtable_0.3.6               
-##  [71] spatstat.data_3.1-9         tzdb_0.5.0                 
-##  [73] hms_1.1.4                   data.table_1.17.8          
-##  [75] XVector_0.50.0              BiocGenerics_0.56.0        
-##  [77] spatstat.geom_3.6-0         RcppAnnoy_0.0.22           
-##  [79] ggrepel_0.9.6               RANN_2.6.2                 
-##  [81] pillar_1.11.1               spam_2.11-1                
-##  [83] RcppHNSW_0.6.0              later_1.4.4                
-##  [85] splines_4.5.1               lattice_0.22-7             
-##  [87] survival_3.8-3              deldir_2.0-4               
-##  [89] tidyselect_1.2.1            miniUI_0.1.2               
-##  [91] pbapply_1.7-4               knitr_1.50                 
-##  [93] gridExtra_2.3               IRanges_2.44.0             
-##  [95] Seqinfo_1.0.0               SummarizedExperiment_1.40.0
-##  [97] scattermore_1.2             stats4_4.5.1               
-##  [99] xfun_0.54                   Biobase_2.70.0             
-## [101] matrixStats_1.5.0           stringi_1.8.7              
-## [103] lazyeval_0.2.2              yaml_2.3.10                
-## [105] evaluate_1.0.5              codetools_0.2-20           
-## [107] cli_3.6.5                   uwot_0.2.4                 
-## [109] xtable_1.8-4                reticulate_1.44.0          
-## [111] jquerylib_0.1.4             dichromat_2.0-0.1          
-## [113] Rcpp_1.1.0                  globals_0.18.0             
-## [115] spatstat.random_3.4-2       png_0.1-8                  
-## [117] spatstat.univar_3.1-4       parallel_4.5.1             
-## [119] dotCall64_1.2               sparseMatrixStats_1.22.0   
-## [121] listenv_0.10.0              viridisLite_0.4.2          
-## [123] scales_1.4.0                ggridges_0.5.7             
-## [125] rlang_1.1.6                 cowplot_1.2.0</code></pre>
+##   [1] RColorBrewer_1.1-3          jsonlite_2.0.0              magrittr_2.0.4              ggbeeswarm_0.7.2           
+##   [5] spatstat.utils_3.2-0        farver_2.1.2                rmarkdown_2.30              vctrs_0.6.5                
+##   [9] ROCR_1.0-11                 DelayedMatrixStats_1.32.0   spatstat.explore_3.5-3      S4Arrays_1.10.0            
+##  [13] htmltools_0.5.8.1           sass_0.4.10                 parallelly_1.45.1           KernSmooth_2.23-26         
+##  [17] bslib_0.9.0                 htmlwidgets_1.6.4           ica_1.0-3                   plyr_1.8.9                 
+##  [21] plotly_4.11.0               zoo_1.8-14                  cachem_1.1.0                igraph_2.2.1               
+##  [25] mime_0.13                   lifecycle_1.0.4             pkgconfig_2.0.3             Matrix_1.7-4               
+##  [29] R6_2.6.1                    fastmap_1.2.0               MatrixGenerics_1.22.0       fitdistrplus_1.2-4         
+##  [33] future_1.67.0               shiny_1.11.1                digest_0.6.38               S4Vectors_0.48.0           
+##  [37] rprojroot_2.1.1             tensor_1.5.1                RSpectra_0.16-2             irlba_2.3.5.1              
+##  [41] GenomicRanges_1.62.0        beachmat_2.26.0             labeling_0.4.3              progressr_0.18.0           
+##  [45] spatstat.sparse_3.1-0       timechange_0.3.0            httr_1.4.7                  polyclip_1.10-7            
+##  [49] abind_1.4-8                 compiler_4.5.1              here_1.0.2                  bit64_4.6.0-1              
+##  [53] withr_3.0.2                 S7_0.2.1                    fastDummies_1.7.5           R.utils_2.13.0             
+##  [57] MASS_7.3-65                 DelayedArray_0.36.0         tools_4.5.1                 vipor_0.4.7                
+##  [61] lmtest_0.9-40               otel_0.2.0                  beeswarm_0.4.0              httpuv_1.6.16              
+##  [65] future.apply_1.20.0         goftest_1.2-3               R.oo_1.27.1                 glue_1.8.0                 
+##  [69] nlme_3.1-168                promises_1.5.0              grid_4.5.1                  Rtsne_0.17                 
+##  [73] cluster_2.1.8.1             reshape2_1.4.5              generics_0.1.4              gtable_0.3.6               
+##  [77] spatstat.data_3.1-9         tzdb_0.5.0                  R.methodsS3_1.8.2           data.table_1.17.8          
+##  [81] hms_1.1.4                   XVector_0.50.0              BiocGenerics_0.56.0         spatstat.geom_3.6-0        
+##  [85] RcppAnnoy_0.0.22            ggrepel_0.9.6               RANN_2.6.2                  pillar_1.11.1              
+##  [89] vroom_1.6.6                 spam_2.11-1                 RcppHNSW_0.6.0              later_1.4.4                
+##  [93] splines_4.5.1               lattice_0.22-7              bit_4.6.0                   survival_3.8-3             
+##  [97] deldir_2.0-4                tidyselect_1.2.1            miniUI_0.1.2                pbapply_1.7-4              
+## [101] knitr_1.50                  gridExtra_2.3               Seqinfo_1.0.0               IRanges_2.44.0             
+## [105] SummarizedExperiment_1.40.0 scattermore_1.2             stats4_4.5.1                xfun_0.54                  
+## [109] Biobase_2.70.0              matrixStats_1.5.0           stringi_1.8.7               lazyeval_0.2.2             
+## [113] yaml_2.3.10                 evaluate_1.0.5              codetools_0.2-20            cli_3.6.5                  
+## [117] uwot_0.2.4                  xtable_1.8-4                reticulate_1.44.0           jquerylib_0.1.4            
+## [121] dichromat_2.0-0.1           Rcpp_1.1.0                  globals_0.18.0              spatstat.random_3.4-2      
+## [125] png_0.1-8                   ggrastr_1.0.2               spatstat.univar_3.1-4       parallel_4.5.1             
+## [129] dotCall64_1.2               sparseMatrixStats_1.22.0    listenv_0.10.0              viridisLite_0.4.2          
+## [133] scales_1.4.0                ggridges_0.5.7              crayon_1.5.3                rlang_1.1.6                
+## [137] cowplot_1.2.0</code></pre>
 </details>
 <!-- 
 NOTE: Commented this out for now, as this is not showing what we might have expected. If you order the points by "top_3000" then we see that they are not all falling above the trendline, which is counter-intuitive. Did not have time to investigate this further, so will leave it out for now, but we should check this at some point.

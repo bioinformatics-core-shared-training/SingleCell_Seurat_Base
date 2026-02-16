@@ -1664,26 +1664,9 @@ div.tocify {
 <h2 number="4.1"><span class="header-section-number">4.1</span> Libraries, parallelisation and seed setting</h2>
 <p>We start our analysis by loading the libraries we will need for this practical. We will be using <code>Seurat</code> for our analysis, <code>sctransform</code> for normalisation (coming later) and <code>tidyverse</code> for data manipulation and plotting.</p>
 <pre class="r"><code># Load the libraries we will need for this practical
-library(Seurat)</code></pre>
-<pre><code>## Loading required package: SeuratObject</code></pre>
-<pre><code>## Loading required package: sp</code></pre>
-<pre><code>## 
-## Attaching package: &#39;SeuratObject&#39;</code></pre>
-<pre><code>## The following objects are masked from &#39;package:base&#39;:
-## 
-##     intersect, t</code></pre>
-<pre class="r"><code>library(sctransform)
+library(Seurat)
+library(sctransform)
 library(tidyverse)</code></pre>
-<pre><code>## ── Attaching core tidyverse packages ────────────────────────────────────────────────────────────────────────── tidyverse 2.0.0 ──
-## ✔ dplyr     1.1.4     ✔ readr     2.1.5
-## ✔ forcats   1.0.1     ✔ stringr   1.6.0
-## ✔ ggplot2   4.0.1     ✔ tibble    3.3.0
-## ✔ lubridate 1.9.4     ✔ tidyr     1.3.1
-## ✔ purrr     1.2.0</code></pre>
-<pre><code>## ── Conflicts ──────────────────────────────────────────────────────────────────────────────────────────── tidyverse_conflicts() ──
-## ✖ dplyr::filter() masks stats::filter()
-## ✖ dplyr::lag()    masks stats::lag()
-## ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors</code></pre>
 <div id="load-single-sample" class="section level3" number="1.1.1">
 <h3 number="4.1.1"><span class="header-section-number">4.1.1</span> Load Single Sample</h3>
 <!-- Note: this code chunk is here so we purl it into the participant script -->
@@ -1734,9 +1717,7 @@ DefaultAssay(etv6_runx1_1)</code></pre>
 <pre><code>## [1] &quot;RNA&quot;</code></pre>
 <p>For convenience, we pull the raw counts matrix for the RNA assay out of the Seurat object and into a separate variable for exploratory analysis and QC. This is not strictly necessary but it can be easier to work with the raw counts matrix directly for some of these steps.</p>
 <pre class="r"><code># Pull out the raw counts matrix for the RNA assay for exploratory analysis and QC
-raw_counts &lt;- GetAssayData(etv6_runx1_1,
-                           assay = &quot;RNA&quot;,
-                           layer = &quot;counts&quot;)</code></pre>
+raw_counts &lt;- etv6_runx1_1[[&quot;RNA&quot;]]$counts</code></pre>
 </div>
 </div>
 <div id="properties-of-single-cell-data" class="section level2" number="1.2">
@@ -1914,9 +1895,7 @@ multi_seurat_object[[]] &lt;- temp_metadata</code></pre>
 <!-- Note: this code chunk is here so we purl it into the participant script -->
 <p>The first thing we should do is filter out genes that haven’t been detected in our experiment. This will reduce the size of the Seurat Object and make processing a little faster. We can do this using the <code>rowSums()</code> function to calculate the total counts for each gene across all cells and all samples, and then filter out genes with zero counts.</p>
 <pre class="r"><code># Get the raw counts to work with
-multi_raw_counts &lt;- GetAssayData(multi_seurat_object,
-                                 assay = &quot;RNA&quot;,
-                                 layer = &quot;counts&quot;)
+multi_raw_counts &lt;- multi_seurat_object[[&quot;RNA&quot;]]$counts
 
 # How many genes are detected in the whole dataset?
 table(rowSums(multi_raw_counts) &gt; 0)</code></pre>
@@ -1936,7 +1915,7 @@ filtered_multi_seurat_object</code></pre>
 ## Active assay: RNA (31753 features, 0 variable features)
 ##  1 layer present: counts</code></pre>
 <pre class="r"><code># Confirm all of these now have at least 1 count across all cells
-filt_raw_counts &lt;- GetAssayData(filtered_multi_seurat_object, assay = &quot;RNA&quot;, layer = &quot;counts&quot;)
+filt_raw_counts &lt;- filtered_multi_seurat_object[[&quot;RNA&quot;]]$counts
 table(rowSums(filt_raw_counts) &gt; 0)</code></pre>
 <pre><code>## 
 ##  TRUE 
