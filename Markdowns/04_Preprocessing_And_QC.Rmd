@@ -81,11 +81,8 @@ The Seurat documentation is more focused on the practicalities of how to use the
 # Look at the structure of the Seurat object
 etv6_runx1_1
 
-# The metadata can be accessed with the @meta.data slot
-head(etv6_runx1_1@meta.data)
-
-# The counts can be accessed with the @assays slot
-etv6_runx1_1@assays
+# The metadata can be accessed using [[]]
+head(etv6_runx1_1[[]])
 ```
 
 Being aware of the **active assay** is important when doing different types of analysis because tools will try to use the active assay by default if they can. 
@@ -98,7 +95,7 @@ Here, we start by defining our default assay to the raw counts, using the `Defau
 DefaultAssay(etv6_runx1_1) <- "RNA"
 
 # Check the active assay was set correctly
-etv6_runx1_1@active.assay
+DefaultAssay(etv6_runx1_1)
 ```
 
 For convenience, we pull the raw counts matrix for the RNA assay out of the Seurat object and into a separate variable for exploratory analysis and QC. 
@@ -106,7 +103,9 @@ This is not strictly necessary but it can be easier to work with the raw counts 
 
 ```{r raw_counts}
 # Pull out the raw counts matrix for the RNA assay for exploratory analysis and QC
-raw_counts <- etv6_runx1_1@assays$RNA$counts
+raw_counts <- GetAssayData(etv6_runx1_1,
+                           assay = "RNA",
+                           layer = "counts")
 ```
 
 ## Properties of Single cell data
@@ -141,18 +140,18 @@ plot(density(genes_per_cell),
 If we compare the number of UMI's assigned to an individual gene to the number of cells in which that gene is detected, we can see that highly expressed genes tend to be detected in a higher proportion of cells than lowly expressed genes.
 
 ```{r expression_vs_detected}
-# Calculate the mean UMIs per cell for each gene
-mean_umis_per_cell <- rowSums(raw_counts) / (rowSums(raw_counts) > 0)
+# Calculate the total UMIs per gene
+total_umis_per_gene <- rowSums(raw_counts)
 
 # Calculate the proportion of cells expressing each gene
 proportion_cells_expressing <- rowMeans(raw_counts > 0)
 
-# Plot the relationship between mean UMIs per cell and proportion of cells expressing the gene
+# Plot the relationship
 plot(
-  x = mean_umis_per_cell,
+  x = total_umis_per_gene,
   y = proportion_cells_expressing,
   log = "x",
-  xlab = "Mean UMIs per cell",
+  xlab = "Total UMIs per gene",
   ylab = "Proportion of cells expressing the gene"
 )
 ```
@@ -255,7 +254,8 @@ length(mito_genes)
 etv6_runx1_1[["percent.mt"]] <- PercentageFeatureSet(etv6_runx1_1,
                                                      pattern = "^MT-")
 
-head(etv6_runx1_1@meta.data)
+# Check the metadata to see the new column
+head(etv6_runx1_1[[]])
 ```
 
 ### Visualize QC Metrics
@@ -326,7 +326,7 @@ Our sample names are structured in a way that makes this easy.
 
 ```{r add_metadata, warning=FALSE, message=FALSE}
 # Pull out the metadata and add sample group and sample name information
-temp_metadata <- multi_seurat_object@meta.data %>%
+temp_metadata <- multi_seurat_object[[]] %>%
   # Add the cell barcodes as a column so we can pull them back in at the end
   rownames_to_column("Cell") %>%
   # Extract the sample group information from the origin identifier
@@ -338,7 +338,7 @@ temp_metadata <- multi_seurat_object@meta.data %>%
   column_to_rownames("Cell")
 
 # Add the modified metadata back to the Seurat object
-multi_seurat_object@meta.data <- temp_metadata
+multi_seurat_object[[]] <- temp_metadata
 ```
 
 ### Remove undetected genes
@@ -354,22 +354,26 @@ This will reduce the size of the Seurat Object and make processing a little fast
 We can do this using the `rowSums()` function to calculate the total counts for each gene across all cells and all samples, and then filter out genes with zero counts.
 
 ```{r filter_undetected_genes}
+# Get the raw counts to work with
+multi_raw_counts <- GetAssayData(multi_seurat_object,
+                                 assay = "RNA",
+                                 layer = "counts")
+
 # How many genes are detected in the whole dataset?
-table(rowSums(multi_seurat_object@assays$RNA$counts) > 0)
+table(rowSums(multi_raw_counts) > 0)
 
 # Filter out genes that are not detected in any cell
 filtered_multi_seurat_object <- subset(
   multi_seurat_object,
-  features = rownames(multi_seurat_object)[
-    Matrix::rowSums(multi_seurat_object[["RNA"]]$counts) > 0
-  ]
+  features = rownames(multi_seurat_object)[rowSums(multi_raw_counts) > 0]
 )
 
 # Check how many genes are detected after filtering
 filtered_multi_seurat_object
 
 # Confirm all of these now have at least 1 count across all cells
-table(rowSums(filtered_multi_seurat_object@assays$RNA$counts) > 0)
+filt_raw_counts <- GetAssayData(filtered_multi_seurat_object, assay = "RNA", layer = "counts")
+table(rowSums(filt_raw_counts) > 0)
 ```
 We don't actually need to do this explicitly. `CreateSeuratObject` has an argument called `min.cells`. The documentation states: "Include features detected in at least this many cells". so by changing this to `1` (default is 0) when we create the object at the start we don't need to worry about this step.
 
@@ -455,7 +459,7 @@ Before generalising this filtering across all samples, let's look at a step-by-s
 
 ```{r filter_one_sample}
 # Pull out the metadata for easier manipulation
-metadata <- filtered_multi_seurat_object@meta.data
+metadata <- filtered_multi_seurat_object[[]]
 
 #### Example of how to filter for one sample ####
 
@@ -627,14 +631,14 @@ Once you import the objects, make sure to **adjust the metadata** as we did in t
 
 ```{r exr_check_data_object, warning=FALSE, message=FALSE}
 # Sample group and sample name information to the metadata
-temp_metadata <- seurat_object@meta.data %>%
+temp_metadata <- seurat_object[[]] %>%
   rownames_to_column("Cell") %>%
   mutate(SampleGroup = str_remove(orig.ident, "-.*")) %>% 
   mutate(SampleName = orig.ident) %>%
   column_to_rownames("Cell")
 
-seurat_object@meta.data <- temp_metadata
-head(seurat_object@meta.data)
+seurat_object[[]] <- temp_metadata
+head(seurat_object[[]])
 ```
 
 Also add the **percentage of UMIs mapped to mitochondrial genes** to the metadata:
@@ -719,7 +723,7 @@ We could apply the filtering across all samples together (i.e. no batch), we cou
 
 ```{r exr_filter_by_sample_group}
 # Extract the metadata for filtering
-metadata <- seurat_object@meta.data
+metadata <- seurat_object[[]]
 
 # Apply the filtering at the SampleGroup level
 # YOUR CODE HERE
@@ -739,7 +743,7 @@ Change the filtering of the metadata to get only the cells you want.
 
 ```{r exr_filter_answer, purl=FALSE}
 # Extract the metadata for filtering
-metadata <- seurat_object@meta.data
+metadata <- seurat_object[[]]
 
 # Apply the filtering at the SampleGroup level
 sample_group_keep_cells <- metadata %>%
@@ -792,7 +796,7 @@ new_metadata <- metadata %>%
   column_to_rownames("Cell")
 
 # We can optionally add this metadata to our object
-seurat_object@meta.data <- new_metadata
+seurat_object[[]] <- new_metadata
 ```
 
 We can make a quick tally of how many cells are kept by each method for each sample:
