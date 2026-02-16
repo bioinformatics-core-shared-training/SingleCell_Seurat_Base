@@ -117,9 +117,17 @@ knitr::include_graphics('../Images/droplet_overview.png')
 
 ## Useful commands in QC
 
-* access counts: `seurat_object@assays$RNA$counts`
+* access counts: 
 
-* access cell metadata: `seurat_object@meta.data`
+    ```r
+    GetAssayData(seurat_object, assay = "RNA", layer = "counts")
+    ```
+
+* access cell metadata: 
+
+    ```r
+    seurat_object[[]]
+    ```
 
 ## QC parameters
 
