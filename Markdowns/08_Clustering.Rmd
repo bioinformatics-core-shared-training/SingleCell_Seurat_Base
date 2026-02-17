@@ -71,7 +71,7 @@ distances from A to other cells. In an SNN graph A and B are connected if the
 distance is amongst the *k* samllest distances from A to other cells and also
 among the *k* smallest distance from B to other cells.
 
-![](Images/KNNvSNN.svg){width=40%}
+![](../Images/KNNvSNN.svg){width=40%}
 
 In the figure above, if *k* is 5, then A and B would be connected in a KNN graph
 as B is one of the 5 closest cells to A, however, they would not be connected in
@@ -85,7 +85,7 @@ The plot below shows the same data set as a network built using three different
 numbers of neighbours: 5, 15 and 25 (from
 [here](https://biocellgen-public.svi.edu.au/mig_2019_scrnaseq-workshop/clustering-and-cell-annotation.html#example-1.-graph-based-clustering-deng-dataset)).
 
-![](Images/bioCellGenGraphDeng.png)
+![](../Images/bioCellGenGraphDeng.png)
 
 ## Weighting the edges
 
@@ -106,9 +106,9 @@ of the two cells' sets of nearest neighbours.
 Clusters are identified using an algorithm that interprets the connections
 of the graph to find groups of highly interconnected cells. A variety of
 different algorithms are available to do this, in these materials we will focus
-on three methods: walktrap, louvain and leiden. See the [OSCA
+on two methods: louvain and leiden. See the [OSCA
 book](http://bioconductor.org/books/release/OSCA.basic/clustering.html#overview-1)
-for details of others available in *scran*.
+for details of others available in *Seurat*.
 
 ## Modularity
 
@@ -170,7 +170,7 @@ These two steps are repeated until modularity stops increasing. The diagram
 below is copied from [this
 article](https://www.nature.com/articles/s41598-019-41695-z#Fig1).
 
-<img src="Images/leiden_Fig1_HTML.png" style="margin:auto; display:block" />
+<img src="../Images/leiden_Fig1_HTML.png" style="margin:auto; display:block" />
 
 ```{r louvain}
 
@@ -185,11 +185,43 @@ DimPlot(seurat_object, reduction = "umap", group.by = "Louvain_k20_res0.8")
 Experiment with different values of `k` and `resolution` parameters in the `FindNeighbors()` and `FindClusters()` functions, respectively. How do these parameters affect the number and composition of clusters identified? Try to find a combination of parameters that gives you a reasonable number of clusters that are well-separated in the UMAP plot.
 
 1. Start with resolution, try 0.4 and 1.6
-2. Then try different values of k, try 10 and 50
+2. Then try different values of k, try 10 and 40
 
 Give them sensible names using the cluster.name argument. How do they alter your clusterings as displayed on your UMAP?
 
 <details><summary>Answer</summary>
+
+```{r exercise1_1, purl=FALSE}
+seurat_object <- FindClusters(seurat_object,
+                             resolution = 0.4, 
+                             algorithm = 1, 
+                             cluster.name = "Louvain_k20_res0.4") 
+seurat_object <- FindClusters(seurat_object,
+                             resolution = 1.6, 
+                             algorithm = 1, 
+                             cluster.name = "Louvain_k20_res1.6") 
+DimPlot(seurat_object, reduction = "umap", group.by = c("Louvain_k20_res0.4", "Louvain_k20_res0.8", "Louvain_k20_res1.6"))
+```
+
+```{r exercise1_2, purl=FALSE}
+seurat_object <- FindNeighbors(seurat_object,
+                               reduction = "harmony", 
+                               k.param = 10, 
+                               dims = 1:15)
+seurat_object <- FindClusters(seurat_object,
+                             resolution = 0.8, 
+                             algorithm = 1, 
+                             cluster.name = "Louvain_k10_res0.8")
+seurat_object <- FindNeighbors(seurat_object,
+                               reduction = "harmony", 
+                               k.param = 40, 
+                               dims = 1:15)
+seurat_object <- FindClusters(seurat_object,
+                             resolution = 0.8,
+                             algorithm = 1,
+                             cluster.name = "Louvain_k40_res0.8")
+DimPlot(seurat_object, reduction = "umap", group.by = c("Louvain_k10_res0.8", "Louvain_k20_res0.8", "Louvain_k40_res0.8"))
+```
 
 </details>
 
@@ -212,11 +244,57 @@ article](https://www.nature.com/articles/s41598-019-41695-z#Fig3).
 
 Repeat the clustering using the Leiden method (algorithm = 4) and compare the results to the Louvain method. Do you see any differences in the clusters identified? 
 
+Use the `random.seed` argument to set a seed when you use the Leiden algorithm as the default in this function is 0 and that will give a warning.
+
 <details><summary>Answer</summary>
+
+```{r exercise2, purl=FALSE}
+seurat_object <- FindNeighbors(seurat_object, 
+                               reduction = "harmony", 
+                               k.param = 20, 
+                               dims = 1:15)
+seurat_object <- FindClusters(seurat_object,
+                             resolution = 0.8,
+                             algorithm = 4,
+                             cluster.name = "Leiden_k20_res0.8",
+                             random.seed = 123) # set seed (warning without)
+DimPlot(seurat_object, reduction = "umap", group.by = c("Louvain_k20_res0.8", "Leiden_k20_res0.8"))
+```
 
 </details>
 
 :::
+
+## Testing multiple resolutions
+
+The `FindClusters` function also allows you to test multiple resolution values in a single run. You can simplu put in multiple values in the resolution argument. This can be useful for quickly comparing the results of different resolutions and finding the best fit for your data. It names them with the resolution value in the column name, so you can easily identify which clustering corresponds to which resolution.
+
+```{r multipleResolutions}
+seurat_object <- FindClusters(seurat_object,
+                             resolution = c(0.4, 0.8, 1.6, 2.0),
+                             algorithm = 1)
+head(seurat_object)
+```
+
+## Testing multiple values for k
+
+Testing multiple values for k is a bit more involved as you need to re-run the `FindNeighbors` function for each value of k. You can write a loop to do this, or you can use the `lapply` function to apply the `FindNeighbors` and `FindClusters` functions to a list of k values.
+
+```{r multipleK}
+k_values <- c(5, 10, 15, 20, 25)
+for (k in k_values) {
+  seurat_object <- FindNeighbors(seurat_object,
+                                 reduction = "harmony", 
+                                 k.param = k, 
+                                 dims = 1:15)
+  seurat_object <- FindClusters(seurat_object,
+                               resolution = 0.8,
+                               algorithm = 1,
+                               cluster.name = paste0("Louvain_k", k, "_res0.8"))
+}
+colnames(seurat_object[[]])
+```
+
 
 # Assessing cluster behaviour
 
@@ -246,20 +324,141 @@ cells in the cluster, cells with a negative silhouette width are more closely
 related to other clusters.
 
 ```{r silhouette}
-# make beeswarm and umap plot
+library(cluster) # for silhouette function
+# calculate silhouette width for a given clustering
+pca_data <- Embeddings(seurat_object, reduction = "pca") # get PCA data
+clusters <- seurat_object$Louvain_k20_res0.8 # get cluster assignments
+silhouette_width <- silhouette(as.numeric(clusters), dist(pca_data)) # calculate silhouette width
+silhouette_width
 ```
 
+```{r silhouettePlots}
+# beeswarm
+plotSilBeeswarm <- function(silDat){
+  silTab <- silDat %>% 
+    as.data.frame() %>% 
+    mutate(closestCluster = ifelse(sil_width > 0, cluster, neighbor) %>% factor())
+  
+  plt <- silTab %>% 
+      ggplot(aes(x=cluster, y=sil_width, colour=closestCluster)) +
+        ggbeeswarm::geom_quasirandom(method="smiley", alpha=0.6) +
+        theme_bw()
+  
+  plt <- scater:::.resolve_plot_colours(plt, silTab$closestCluster, "closestCluster", colour = TRUE)
+  plt
+}
+
+p1 <- plotSilBeeswarm(silhouette_width)
+p2 <- DimPlot(seurat_object, 
+              reduction = "umap", 
+              group.by = "Louvain_k20_res0.8", 
+              label = TRUE) + 
+  NoLegend()
+p1 + p2
+```
+
+We can use this to compare with the Leiden clustering we did in the previous exercise.
+
+```{r silhouetteLeiden}
+clusters_leiden <- seurat_object$Leiden_k20_res0.8 # get cluster
+silhouette_width_leiden <- silhouette(as.numeric(clusters_leiden),dist(pca_data)) # calculate silhouette width
+p1_leiden <- plotSilBeeswarm(silhouette_width_leiden)
+p2_leiden <- DimPlot(seurat_object, 
+              reduction = "umap", 
+              group.by = "Leiden_k20_res0.8")
+p1_leiden + p2_leiden
+```
+
+## Mean silhouette width
+
+When we are comparing a lot of potential clustering possibilities it can be useful to summarise the silhouette widths for the whole clustering. The mean silhouette width is a measure of how well separated the clusters are from each other. A higher mean silhouette width indicates that the clusters are more well-defined and separated from each other, while a lower mean silhouette width indicates that the clusters are less well-defined and may be overlapping. So we want to find a clustering that maximises this whilst also giving us a reasonable number of clusters.
+
+
+## Comparing silhouette widths across different values of k
+
+```{r meanSilhouette}
+# calculate mean silhouette width for different values of k
+
+mean_silhouette_widths <- sapply(k_values, function(k) {
+  clusters <- seurat_object[[paste0("Louvain_k", k, "_res0.8")]] %>%
+    pull()# get cluster assignments for each k
+  silhouette_width <- silhouette(as.numeric(clusters), dist(pca_data)) # calculate silhouette width
+  mean(silhouette_width[, "sil_width"]) # calculate mean silhouette width
+})
+mean_silhouette_widths
+```
+
+This is must easier viewed as a plot
+
 ```{r silhouette2}
-# make cluster number and silhouette width plot with multiple k values
+# silhouette width plot with multiple k values
+silhouette_df <- data.frame(
+  k = k_values,
+  mean_silhouette_width = mean_silhouette_widths
+) 
+
+silplot <- silhouette_df %>% 
+  ggplot(aes(x = k, y = mean_silhouette_width)) +
+  geom_line(lwd=2)
+
+# make number of clusters plot with multiple k values
+num_clusters <- sapply(k_values, function(k) {
+  # get number of clusters for each k
+  seurat_object[[paste0("Louvain_k", k, "_res0.8")]] %>%
+    pull() %>%
+    unique() %>%
+    length()
+})
+
+clusters_df <- data.frame(
+  k = k_values,
+  num_clusters = num_clusters
+)
+
+cluplot <- clusters_df %>%
+  ggplot(aes(x = k, y = num_clusters)) +
+  geom_line(lwd=2)
+
+cluplot + silplot
+
 ```
 
 ### Exercise 3
 
 :::exercise
 
-Decide on resolution and k
+Have a play with K, Resolution and the two algorithms and compare the results using silhouette widths. Can you find a combination of parameters that gives you a reasonable number of clusters that are well-separated in the UMAP plot?
+
+<details><summary>Answer</summary>
+
+```{r exercise3, purl=FALSE}
+# Example answer, but there is no single correct answer here
+
+```
+
+</details>
 
 :::
 
 ## Check clustering with known markers
+
+When you have come to a decision about which clustering to use it is convenient to set `Idents` to the column name of the clustering you have chosen. This means downstream code does not need to be changed should you later decide to switch to a different clustering, you’d simply need to change the contents of the `Idents` slot. This also makes the code easily re-usable for different analyses.
+
+For now we will use the Leiden k=25 clustering.
+
+```{r setIdents}
+Idents(seurat_object) <- seurat_object$Leiden_k25_res0.8
+```
+
+## Finalise the clustering
+
+Having identified clusters, we now display the level of expression of cell type marker genes to quickly match clusters with cell types. For each marker we will plot its expression on a t-SNE, and show distribution across each cluster on a violin plot.
+
+```{r markerPlots}
+Fplot <- FeaturePlot(seurat_object, features = "HBA1", reduction = "umap")
+Vplot <- VlnPlot(seurat_object, features = "HBA1", 
+                 group.by = Idents(seurat_object),
+                 pt.size = 0) + NoLegend()
+Fplot + Vplot
+```
 
