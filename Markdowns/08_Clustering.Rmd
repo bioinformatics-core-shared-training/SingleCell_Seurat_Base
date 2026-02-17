@@ -329,7 +329,7 @@ library(cluster) # for silhouette function
 pca_data <- Embeddings(seurat_object, reduction = "pca") # get PCA data
 clusters <- seurat_object$Louvain_k20_res0.8 # get cluster assignments
 silhouette_width <- silhouette(as.numeric(clusters), dist(pca_data)) # calculate silhouette width
-silhouette_width
+head(silhouette_width)
 ```
 
 ```{r silhouettePlots}
@@ -431,24 +431,113 @@ Have a play with K, Resolution and the two algorithms and compare the results us
 
 <details><summary>Answer</summary>
 
+The answer detailed here is not perfect but it illustrates the process of testing different values of k and resolution and comparing the results using silhouette widths. You may find a different combination of parameters that works better for your data.
+
 ```{r exercise3, purl=FALSE}
 # Example answer, but there is no single correct answer here
+k_values <- c(15, 16, 17,18, 19,20)
+for (k in k_values) {
+  seurat_object <- FindNeighbors(seurat_object,
+                                 reduction = "harmony", 
+                                 k.param = k, 
+                                 dims = 1:15)
+  seurat_object <- FindClusters(seurat_object,
+                               resolution = 0.8,
+                               algorithm = 4,
+                               random.seed = 123,
+                               cluster.name = paste0("Leiden_k", k, "_res0.8"))
+}
 
+mean_silhouette_widths <- sapply(k_values, function(k) {
+  clusters <- seurat_object[[paste0("Leiden_k", k, "_res0.8")]] %>%
+    pull()# get cluster assignments for each k
+  silhouette_width <- silhouette(as.numeric(clusters), dist(pca_data)) # calculate silhouette width
+  mean(silhouette_width[, "sil_width"]) # calculate mean silhouette width
+})
+
+silhouette_df <- data.frame(
+  k = k_values,
+  mean_silhouette_width = mean_silhouette_widths
+)
+silplot <- silhouette_df %>% 
+  ggplot(aes(x = k, y = mean_silhouette_width)) +
+  geom_line(lwd=2)
+num_clusters <- sapply(k_values, function(k) {
+  # get number of clusters for each k
+  seurat_object[[paste0("Leiden_k", k, "_res0.8")]] %>%
+    pull() %>%
+    unique() %>%
+    length()
+})
+clusters_df <- data.frame(
+  k = k_values,
+  num_clusters = num_clusters
+)
+cluplot <- clusters_df %>%
+  ggplot(aes(x = k, y = num_clusters)) +
+  geom_line(lwd=2)
+
+cluplot + silplot
+
+```
+
+```{r k17}
+# test resolutions with k=17
+res_values <- c(0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6)
+for (res in res_values) {
+  seurat_object <- FindClusters(seurat_object,
+                               resolution = res,
+                               algorithm = 4,
+                               random.seed = 123,
+                               cluster.name = paste0("Leiden_k17_res", res))
+}
+mean_silhouette_widths_res <- sapply(res_values, function(res) {
+  clusters <- seurat_object[[paste0("Leiden_k17_res", res)]] %>%
+    pull()
+  silhouette_width <- silhouette(as.numeric(clusters), dist(pca_data)) 
+  mean(silhouette_width[, "sil_width"]) 
+})
+
+silhouette_df_res <- data.frame(
+  resolution = res_values,
+  mean_silhouette_width = mean_silhouette_widths_res
+)
+
+silplot_res <- silhouette_df_res %>% 
+  ggplot(aes(x = resolution, y = mean_silhouette_width)) +
+  geom_line(lwd=2)
+
+silplot_res
+
+num_clusters_res <- sapply(res_values, function(res) {
+  # get number of clusters for each resolution
+  seurat_object[[paste0("Leiden_k17_res", res)]] %>%
+    pull() %>%
+    unique() %>%
+    length()
+})
+clusters_df_res <- data.frame(
+  res = res_values,
+  num_clusters = num_clusters_res
+)
+cluplot_res <- clusters_df_res %>%
+  ggplot(aes(x = res, y = num_clusters)) +
+  geom_line(lwd=2)
+
+cluplot_res + silplot_res
+```
+
+So from these results, using the Leiden algorithm, we can see that a k value of 17 and a resolution of 1 gives us a reasonable outcome with silhouette width. We can draw the UMAP too.
+
+```{r k17res1}
+DimPlot(seurat_object, reduction = "umap", group.by = "Leiden_k17_res1")
 ```
 
 </details>
 
 :::
 
-## Check clustering with known markers
 
-When you have come to a decision about which clustering to use it is convenient to set `Idents` to the column name of the clustering you have chosen. This means downstream code does not need to be changed should you later decide to switch to a different clustering, you’d simply need to change the contents of the `Idents` slot. This also makes the code easily re-usable for different analyses.
-
-For now we will use the Leiden k=25 clustering.
-
-```{r setIdents}
-Idents(seurat_object) <- seurat_object$Leiden_k25_res0.8
-```
 
 ## Finalise the clustering
 
@@ -457,8 +546,11 @@ Having identified clusters, we now display the level of expression of cell type 
 ```{r markerPlots}
 Fplot <- FeaturePlot(seurat_object, features = "HBA1", reduction = "umap")
 Vplot <- VlnPlot(seurat_object, features = "HBA1", 
-                 group.by = Idents(seurat_object),
+                 group.by = "Leiden_k17_res1",
                  pt.size = 0) + NoLegend()
 Fplot + Vplot
 ```
 
+```{r sessioninfo}
+sessionInfo()
+```
