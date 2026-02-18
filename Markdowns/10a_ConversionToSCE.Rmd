@@ -1,0 +1,63 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+subtitle: "Conversion of a Seurat object to a SingleCellExperiment object"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: show
+    css: ../css/boxes.css
+---
+
+In order to utilise certain functions from the Bioconductor ecosystem, it is often necessary to convert a Seurat object to a SingleCellExperiment (SCE) object. This can be achieved using the `as.SingleCellExperiment()` function from the Seurat package.
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(Seurat)
+library(SingleCellExperiment)
+library(tidyverse)
+```
+We will load our seurat object. This is all the cells from sample groups ETV6-RUNX1 and PBMMC. The data has been processed as described in the previous sections (QC, normalisation, feature selection, dimensionality reduction, harmony integration and clustering).
+
+```{r load data}
+# Load the Seurat object
+#seurat_object <- readRDS("../RObjects/Annotated.full.ETV6.PBMMC.rds")
+# load and filter for only ETV6 and PBMMC samples
+seurat_object <- readRDS("../RObjects/Annotated.500.rds")
+seurat_object <- subset(seurat_object, subset = SampleGroup == "ETV6RUNX1" | SampleGroup == "PBMMC")
+```
+
+Now we can convert the Seurat object to a SingleCellExperiment object.
+
+```{r convert to sce}
+# Convert the Seurat object to a SingleCellExperiment object
+sce_object <- as.SingleCellExperiment(seurat_object)
+```
+
+We need to make sure all the information is correctly transferred to the SCE object. The structure of the `SingleCellExperiment` object is different to the `Seurat` object but it has different slots for different information types in a similar way.
+
+![](Images/sceOverview.png)
+
+```{r sce}
+sce_object
+```
+
+It looks like everyhting has been transfered but we should check. The `colData` slot of the SCE object should contain all the relevant metadata from the Seurat object.
+
+```{r check colData}
+head(colData(sce_object))
+```
+
+The `assays` slot of the SCE object should contain the count data and the normalised data. The `counts` assay should contain the raw count data and the `logcounts` assay should contain the log-normalised data.
+
+The `reducedDims` slot of the SCE object should contain the dimensionality reduction results. The `PCA` slot should contain the PCA results and the `UMAP` slot should contain the UMAP results. There should also be a `harmony` slot containing the harmony results.
+
+To test that the dimensionality reduction results have been correctly transfered, we can plot the UMAP using the `plotReducedDim()` function from the `scater` package.
+
+```{r plotumap}
+library(scater)
+plotReducedDim(sce_object, "UMAP", colour_by = "leiden_cluster")
+```
+
+This looks the same as our UMAP plot from the Seurat object, so we can be confident that the conversion was successful. We can now use this SCE object for downstream analysis using Bioconductor packages.
