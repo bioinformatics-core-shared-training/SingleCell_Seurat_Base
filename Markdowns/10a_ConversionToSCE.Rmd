@@ -22,22 +22,20 @@ We will load our seurat object. This is all the cells from sample groups ETV6-RU
 
 ```{r load data}
 # Load the Seurat object
-#seurat_object <- readRDS("../RObjects/Annotated.full.ETV6.PBMMC.rds")
-# load and filter for only ETV6 and PBMMC samples
-seurat_object <- readRDS("../RObjects/Annotated.500.rds")
-seurat_object <- subset(seurat_object, subset = SampleGroup == "ETV6RUNX1" | SampleGroup == "PBMMC")
+seurat_object <- readRDS("../RObjects/Annotated.full.ETV6.PBMMC.rds")
+
 ```
 
 Now we can convert the Seurat object to a SingleCellExperiment object.
 
-```{r convert to sce}
+```{r convert to sce, warning=FALSE}
 # Convert the Seurat object to a SingleCellExperiment object
 sce_object <- as.SingleCellExperiment(seurat_object)
 ```
 
 We need to make sure all the information is correctly transferred to the SCE object. The structure of the `SingleCellExperiment` object is different to the `Seurat` object but it has different slots for different information types in a similar way.
 
-![](Images/sceOverview.png)
+![](../Images/sceOverview.png)
 
 ```{r sce}
 sce_object
@@ -58,6 +56,7 @@ To test that the dimensionality reduction results have been correctly transfered
 ```{r plotumap}
 library(scater)
 plotReducedDim(sce_object, "UMAP", colour_by = "leiden_cluster")
+DimPlot(seurat_object, reduction = "umap", group.by = "leiden_cluster")
 ```
 
 This looks the same as our UMAP plot from the Seurat object, so we can be confident that the conversion was successful. We can now use this SCE object for downstream analysis using Bioconductor packages.
