@@ -124,7 +124,7 @@ Instead, we should use the log fold change and percentage of cells expressing th
 
 ```{r filtermarkers2}
 markers_cluster2_filtered <- markers_cluster2 %>%
-  filter(pct.1 > 0.70, avg_log2FC > 1)
+  filter(pct.1 > 0.70, abs(avg_log2FC) > 1)
 markers_cluster2_filtered %>% head()
 ```
 
@@ -165,7 +165,7 @@ We can filter the dataframe to get the same information as we did before. To get
 
 ```{r filterallmarkers2}
 markers_all_cluster2 <- markers_all %>%
-  filter(cluster == 2, pct.1 > 0.70, avg_log2FC > 1)
+  filter(cluster == 2, pct.1 > 0.70, abs(avg_log2FC) > 1)
 markers_all_cluster2 %>% head()
 ```
 
@@ -179,6 +179,20 @@ We saw earlier that known monocyte marker CST3 was expressed in cluster 13. Use 
 
 <details><summary>Answer</summary>
 
+```{r exercise1, purl=FALSE}
+# using FindMarkers()
+markers_cluster13 <- FindMarkers(seurat_object,
+                               ident.1 = 13,
+                               ident.2 = NULL,
+                               assay = "SCT",
+                               group.by = "leiden_cluster")
+markers_cluster13_filtered <- markers_cluster13 %>%
+  filter(pct.1 > 0.70, abs(avg_log2FC) > 1)
+         
+markers_cluster13_filtered %>% head()
+
+```
+
 </details>
 
 ## Heatmap of marker genes
@@ -190,11 +204,28 @@ reduced dimensionality space.
 
 Another useful type of visualisation is to use **heatmaps** to show the
 expression of these genes of interest. 
-We will demonstrate this using the top marker genes for cluster 13.
+We will demonstrate this using the top marker genes for cluster 13. Lets take the top 20 genes from our filtered markers.
+
+```{r heatmap}
+# top 20 marker genes for cluster 13
+top_markers_cluster13 <- markers_cluster13_filtered %>%
+  top_n(n = 20, wt = abs(avg_log2FC)) %>%
+  rownames()
+
+# heatmap of expression for these genes
+
+DoHeatmap(seurat_object, 
+          features = top_markers_cluster13, 
+          group.by = "leiden_cluster") + scale_fill_gradientn(colors = c("navy", "white", "firebrick")) # seurat default colours are ugly
+
+
+
+
+```
 
 ## Cell Type Labelling
 
-One of the main tasks we often want to perform is annotating our cells as known types of cells ocurring in our sampled tissue. 
+One of the main tasks we often want to perform is annotating our cells as known types of cells occurring in our sampled tissue. 
 This requires prior knowledge of cell transcriptomic states and therefore becomes easier if there are well-curated resources available. 
 However, for less well-studied tissues these may not be available and so cell type annotation may rely on "manual annotation" using a small set of genes with known cell-specific expression (e.g. from microscopy data, qPCR on cell-sorted samples, etc.). 
 
@@ -217,11 +248,12 @@ To help us in our annotation, we start by retrieving the top-ranked genes from e
 We do this by looping through the list using the `lapply()` function and in each case picking the genes with rank < 10 for Cohen's D statistic:
 
 ```{r all_top_markers}
-# loop through list of marker genes and extract top-ranked gene names
-top_markers_all <- lapply(markers, function(x){
-  x %>% 
-    as.data.frame() %>% 
-    filter(rank.logFC.cohen < 10) %>% 
+# loop through all marker genes and extract top-ranked gene names for each cluster
+top_markers_all <- lapply(unique(markers_all$cluster), function(x) {
+  markers_all %>%
+    filter(cluster == x) %>%
+    filter(pct.1 > 0.70, abs(avg_log2FC) > 1) %>%
+    top_n(n = 15, wt = abs(avg_log2FC)) %>%
     rownames()
 })
 
@@ -252,15 +284,12 @@ known_genes <- c(
   )
 
 # violin plot
-plotExpression(sce, x = "label", features = known_genes)
+VlnPlot(seurat_object,
+        features = known_genes,
+        group.by = "leiden_cluster",
+        pt.size = 0) + NoLegend() + scale_x_discrete(guide =
+  guide_axis(angle = 45))
 
-# scaled heatmap of expression
-plotGroupedHeatmap(sce, 
-                   features = known_genes,
-                   group = "label",
-                   block = "SampleGroup", 
-                   scale = TRUE, center = TRUE, 
-                   zlim = c(-3, 3))
 ```
 
 Based on the expression patterns for these cells, we classify these clusters as follows: 
@@ -268,41 +297,66 @@ Based on the expression patterns for these cells, we classify these clusters as 
 | Cluster | Labelled Cell Type                | Evidence      |
 | :------ | :-------------------------------- | :------------ |
 | 1       | B cells                           | CD79A         |
-| 2       | B cells                           | CD79A         |
+| 2       | T cells                           | CD79A         |
 | 3       | B cells                           | CD79A         |
 | 4       | B cells                           | CD79A         |
-| 5       | CD20+ B cells                     | CD79A + MS4A1 |
-| 6       | T cells                           | CD3D          |
-| 7       | NK T cells                        | CD3D + NKG7   |
-| 8       | Erythrocytes                      | HBA1          |
-| 9       | Erythrocytes                      | HBA1          |
-| 10      | Erythrocytes                      | HBA1          |
-| 11      | Monocytes                         | CST3          |
+| 5       | T cells                           | CD3D          |
+| 6       | B cells                           | CD79A         |
+| 7       | B cells                           | CD79A         |
+| 8       | B cells                           | CD79A         |
+| 9       | CD20 B cells                      | CD79A + MS4A1 |
+| 10      | T cells                           | CD3D          |
+| 11      | NK T cells                        | CD3D + NKG7   |
 | 12      | B cells                           | CD79A         |
+| 13      | Monocytes                         | CD79A         |
+| 14      | Erythrocytes                      | HBA1          |
+| 15      | Erythrocytes                      | HBA1          |
+| 16      | Unknown                           |               |
 
+Note: cluster 16 has not been identified but it's top markers seem to be tumour or cancer related genes, so it may be a cluster of tumour cells.
 
-Now that we have a more meaningful annotation for our clusters, let's add this to our `SingleCellExperiment` object.
+Now that we have a more meaningful annotation for our clusters, let's add this to our `Seurat` object.
 We will also add the original cluster ID in parenthesis to remind ourselves that this annotation was done based on the clusters. 
 
-The cell labels are stored in the `SingleCellExperiment` object as a _factor_ (a type of object in R to store categorical data), and so we can change the labels using the `levels()` function, like so:
+When you have come to a decision about which clustering to use it is convenient to set `Idents` to the column name of the clustering you have chosen. This means downstream code does not need to be changed should you later decide to switch to a different clustering, you’d simply need to change the contents of the `Idents` slot. This also makes the code easily re-usable for different analyses.
 
 ```{r relabel}
-# re-label the cells - original cluster in parenthesis
-levels(colLabels(sce)) <- c("B (c1)", "B (c2)", 
-                            "B (c3)", "B (c4)",
-                            "CD20+ B (c5)", 
-                            "T (c6)", "NK T (c7)", 
-                            "Erythrocytes (c8)", "Erythrocytes (c9)", 
-                            "Erythrocytes c(10)",
-                            "Monocytes (c11)", "B (c12)")
+
+temp_metadata <- seurat_object@meta.data %>%
+  mutate(Idents = case_when(
+    leiden_cluster == 1 ~ "B (c1)",
+    leiden_cluster == 2 ~ "T (c2)",
+    leiden_cluster == 3 ~ "B (c3)",
+    leiden_cluster == 4 ~ "B (c4)",
+    leiden_cluster == 5 ~ "T (c5)",
+    leiden_cluster == 6 ~ "B (c6)",
+    leiden_cluster == 7 ~ "B (c7)",
+    leiden_cluster == 8 ~ "B (c8)",
+    leiden_cluster == 9 ~ "CD20+ B (c9)",
+    leiden_cluster == 10 ~ "T (c10)",
+    leiden_cluster == 11 ~ "NK T (c11)",
+    leiden_cluster == 12 ~ "B (c12)",
+    leiden_cluster == 13 ~ "Monocytes (c13)",
+    leiden_cluster == 14 ~ "Erythrocytes (c14)",
+    leiden_cluster == 15 ~ "Erythrocytes (c15)",
+    leiden_cluster == 16 ~ "Unknown (c16)"
+  ))
+
+seurat_object <- AddMetaData(seurat_object, metadata = temp_metadata$Idents, col.name = "Idents")
+
+Idents(seurat_object) <- "Idents"
+
 ```
 
-Now, when we label our UMAP, we can see the new labels, which are more intutitive to interpret:
+Now, when we label our UMAP, we can see the new names, which are more intutitive to interpret:
 
 ```{r umap_relabel}
 # visualise UMAP with new labels
-plotReducedDim(sce, dimred = "UMAP_corrected", 
-               colour_by = "label", text_by = "label")
+DimPlot(seurat_object,
+        reduction = "umap",
+        group.by = "Idents",
+        label = TRUE,
+        label.size = 5) + NoLegend()
 ```
 
 ## (Bonus) Further exploration
@@ -312,11 +366,10 @@ plotReducedDim(sce, dimred = "UMAP_corrected",
 Looking at the expression of _HBA1_ and _HBA2_: 
 
 ```{r, purl=FALSE}
-# note we rotate the axis labels for convenience
-# this uses standard ggplot2 syntax, see:
-# https://stackoverflow.com/a/60650595/5023162
-plotExpression(sce, x = "label", features = c("HBA1", "HBA2")) +
-  scale_x_discrete(guide = guide_axis(angle = 45))
+
+FeaturePlot(seurat_object,
+            features = c("HBA1", "HBA2"),
+            reduction = "umap") + scale_x_discrete(guide = guide_axis(angle = 45))
 ```
 
 You may notice that there is a lot of background expression across several cell clusters. 
@@ -325,6 +378,8 @@ Hemoglobin chains, such as _HBA1_ and _HBA2_, are very highly expressed in red b
 Some of this medium, or "soup", containing ambient RNA is captured with each cell. 
 There are methods available to correct for soup in your analysis such as [SoupX](https://academic.oup.com/gigascience/article/9/12/giaa151/6049831).
 
-
+```{r sessioninfo}
+sessionInfo()
+```
 
 
