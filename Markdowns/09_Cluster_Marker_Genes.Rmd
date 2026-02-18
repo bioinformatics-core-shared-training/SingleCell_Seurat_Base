@@ -1,0 +1,330 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+subtitle: "Cluster Marker Genes"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    pandoc_args: ["--number-offset", "8"] # TOC will start at 9
+    code_folding: show
+    css: ../css/boxes.css
+---
+
+# Introduction
+
+In order to aid the interpretation of the clustering results that we covered in
+the [previous section](08_Clustering.html), it is helpful to identify genes that
+contribute to the separation of cells into those clusters.
+
+The main approach to achieve this, is to identify genes that are differently
+expressed between clusters. These may be, for example, exclusively expressed in
+a single cluster or perhaps differentiate between a few different clusters.
+There are different methods to identify expression differences between clusters:
+using mean expression level, or the ranking of the gene by its expression, or
+the proportions of cells that express the gene.
+
+Our main objective in this section is to cover some of the methods that can be used to achieve this goal, and obtain a summary table of results.
+As always, the [OSCA chapter on marker detection](https://bioconductor.org/books/release/OSCA.basic/marker-detection.html)
+contains additional detail and advice.
+
+## Load Data
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(Seurat)
+library(sctransform)
+library(glmGamPoi)
+library(tidyverse)
+library(patchwork)
+```
+
+First we will load in a version of our data that has been processed up until this point in the course. QCed, normalised, dimensionality reduced and clustered. 
+
+```{r data}
+seurat_object <- readRDS("../RObjects/Clustered.500.rds")
+```
+The cluster information is stored in our objects `meta.data` slot and is called "leiden_cluster". 
+
+To remind ourselves, we can visualise the clusters on a UMAP:
+
+```{r umap}
+DimPlot(seurat_object,
+        reduction = "umap",
+        group.by = "leiden_cluster",
+        label = TRUE,
+        label.size = 5) + NoLegend()
+```
+
+Our objective is to identify genes that distinguish these clusters from one
+another - "cluster marker genes". Intuitively we hope that the clusters relate
+to specific cell populations, and therefore we are trying to find genes that
+will allow us to identify the cell types for each cluster.
+
+For example genes such as the "CST3" gene, which is a known monocyte marker:
+
+```{r cst3}
+# visualise known monocyte marker gene CST3
+FeaturePlot(seurat_object,
+            reduction = "umap",
+            features = "CST3")
+```
+
+## Identifying cluster marker genes
+
+Although we have defined our clusters based on the batch-corrected expression
+values, these should **not** be used for for gene-based analyses like marker
+gene detection. Instead, we should **use the uncorrected (normalised) expression
+values for differential expression between clusters**. This is because data
+integration algorithms bring cells together based on their overall gene
+expression, but for each gene individually the data transformation may introduce
+artificial agreement between batches, which is not ideal for gene-level
+differential analysis. Furthermore, the severity of these biases is dependent on
+the parameters used for data integration.
+
+Valid assays to use in gene based differential analysis tests are the normalised
+counts obtained from the SCTransform methodand stored int he "SCT" assay. 
+
+Seurat has two functions we can use for this, `FindMarkers()` and `FindAllMarkers()`. The former allows us to compare two clusters at a time, in a pairwise manner. The latter automates this for all clusters but can also be used to test groups of clusters against other clusters or against all cells.
+
+Prior to performing differential expression, we first run PrepSCTFindMarkers. 
+
+"This allows us to use the ‘corrected counts’ that are stored in the data slot of the the SCT assay. Corrected counts are obtained by setting the sequencing depth for all the cells to a fixed value and reversing the learned regularized negative-binomial regression model. PrepSCTFindMarkers() ensures that the fixed value is set properly."
+  -- Seurat Vignette
+
+```{r prepmarkers}
+seurat_object <- PrepSCTFindMarkers(seurat_object, assay = "SCT")
+```
+
+
+### Finding markers of a single cluster
+
+To find markers of a single cluster, we can use `FindMarkers()`. For example, to find genes that are differentially expressed in cluster 2 compared to all other clusters:
+
+```{r findmarkers2}
+# takes about 6 mins to run without presto (teabreak?)
+markers_cluster2 <- FindMarkers(seurat_object,
+                               ident.1 = 2,
+                               ident.2 = NULL,
+                               assay = "SCT",
+                               group.by = "leiden_cluster")
+markers_cluster2 %>% head()
+```
+
+The output is a data frame with the following columns:
+- `p_val`: p-value of the test
+- `avg_log2FC`: average log2 fold change between the two groups
+- `pct.1`: percentage of cells in cluster 2 that express the gene
+- `pct.2`: percentage of cells in the other clusters that express the gene
+- `p_val_adj`: adjusted p-value for multiple testing
+
+Using pvalues is inappropriate for marker gene detection. This is because the differential expression is performed on the same data used to obtain the clusters and would therefore be "data dredging". If we have used gene expression to seperate the cells into clusters we would expect thre to be a difference in expression between clusters. Admitedly, if simply used to identify possible marker genes by ranking this is largely harmless but it becuse problematic when the pvalues are used to claim statistically significant seperation between clusters. There is also an issue of pseudoreplication where in this type of differential application cells from the same cluster are treated as replicates when infact cells from the same sample are not independent. There is a more detailed discussion of these issues here. https://bioconductor.org/books/3.14/OSCA.advanced/marker-detection-redux.html
+
+Instead, we should use the log fold change and percentage of cells expressing the gene to identify marker genes. For example, we could filter for genes that are expressed in at least 70% of cells in cluster 2 and have a log fold change greater than 1:
+
+```{r filtermarkers2}
+markers_cluster2_filtered <- markers_cluster2 %>%
+  filter(pct.1 > 0.70, avg_log2FC > 1)
+markers_cluster2_filtered %>% head()
+```
+
+We can plot some of these marker genes on the UMAP.
+
+```{r markerPlots}
+Fplot <- FeaturePlot(seurat_object, features = "SKAP1", reduction = "umap")
+Vplot <- VlnPlot(seurat_object, features = "SKAP1", 
+                 group.by = "leiden_cluster",
+                 pt.size = 0) + NoLegend()
+Fplot + Vplot + plot_layout(ncol = 2)
+# SKAP1 is a TCR gene
+# Also appears in cluster 9 which if we look back at UMAP by cluster is next to it.
+```
+
+### Finding markers of all clusters
+
+To do the same process but for all clusters we use `FindAllMarkers()`. 
+
+```{r findallmarkers}
+
+markers_all <- FindAllMarkers(seurat_object,
+                              assay = "SCT",
+                              group.by = "leiden_cluster")
+markers_all %>% head()
+```
+
+The output is a data frame with the following columns:
+- `gene`: gene name
+- `cluster`: cluster number
+- `p_val`: p-value of the test
+- `avg_log2FC`: average log2 fold change between the cluster and all other clusters
+- `pct.1`: percentage of cells in the cluster that express the gene
+- `pct.2`: percentage of cells in the other clusters that express the gene
+- `p_val_adj`: adjusted p-value for multiple testing
+
+We can filter the dataframe to get the same information as we did before. To get the marker genes for cluster 2:
+
+```{r filterallmarkers2}
+markers_all_cluster2 <- markers_all %>%
+  filter(cluster == 2, pct.1 > 0.70, avg_log2FC > 1)
+markers_all_cluster2 %>% head()
+```
+
+We can see we have the same 29 genes.
+
+## Exercise 1
+
+:::exercise
+
+We saw earlier that known monocyte marker CST3 was expressed in cluster 13. Use the FindMarkers() function or the FindAllMarkers() function to investigate what other potentially good marker genes would be for that cluster.
+
+<details><summary>Answer</summary>
+
+</details>
+
+## Heatmap of marker genes
+
+We have already seen how we can use the `VlnPlot()` function to visualise
+the distribution of expression in our data between clusters. We have also seen
+how to use `FeaturePlot()` to visualise a gene's expression on the projected
+reduced dimensionality space.
+
+Another useful type of visualisation is to use **heatmaps** to show the
+expression of these genes of interest. 
+We will demonstrate this using the top marker genes for cluster 13.
+
+## Cell Type Labelling
+
+One of the main tasks we often want to perform is annotating our cells as known types of cells ocurring in our sampled tissue. 
+This requires prior knowledge of cell transcriptomic states and therefore becomes easier if there are well-curated resources available. 
+However, for less well-studied tissues these may not be available and so cell type annotation may rely on "manual annotation" using a small set of genes with known cell-specific expression (e.g. from microscopy data, qPCR on cell-sorted samples, etc.). 
+
+In this section we will do a very simple manual labelling of our clusters, based on known genes expressed in different blood cell types. 
+However, there are more systematic methods for cell type annotation, in particular when prior information is available for those cells: 
+
+- The [`SingleR`](https://bioconductor.org/packages/3.16/bioc/vignettes/SingleR/inst/doc/SingleR.html) package uses previously labelled bulk or single-cell datasets to annotate a new dataset.
+- The [`AUCcell`](https://bioconductor.org/packages/3.16/bioc/vignettes/AUCell/inst/doc/AUCell.html) package classifies cells into types based on user-provided lists of "signature" genes for each type. These lists can be generated from literature, or also be based on prior RNA-seq datasets. 
+- Another strategy is to perform a standard gene set enrichment analysis on the top marker genes for each cluster. 
+
+Any of these approaches is suitable, and they can often be done in conjunction. 
+To learn more about these approaches, read the chapter on [cell type annotation in the OSCA book](http://bioconductor.org/books/3.16/OSCA.basic/cell-type-annotation.html).
+
+
+## Manual annotation
+
+A lot is known about immune cell markers, in particular as many surface markers have been identified as useful for [immunophenotyping](https://en.m.wikipedia.org/wiki/Cluster_of_differentiation#Immunophenotyping). 
+
+To help us in our annotation, we start by retrieving the top-ranked genes from each cluster into a list. 
+We do this by looping through the list using the `lapply()` function and in each case picking the genes with rank < 10 for Cohen's D statistic:
+
+```{r all_top_markers}
+# loop through list of marker genes and extract top-ranked gene names
+top_markers_all <- lapply(markers, function(x){
+  x %>% 
+    as.data.frame() %>% 
+    filter(rank.logFC.cohen < 10) %>% 
+    rownames()
+})
+
+# examining this list reveals several known markers of immune cells
+top_markers_all
+```
+
+If we took some time to examine this list (which would benefit from knowing about the underlying biology of the immune system), we can start to see some genes known to differentiate different types of cells: 
+
+- _HBA1_ and _HBA2_ → expressed in red blood cells (erythrocytes)
+- _CST3_ → specific to monocytes
+- _CD3E_ and _CD3D_ → specific to T cells
+- _NKG7_ → specific to natural killer (NK) T cells
+- _CD79A_ and _CD24_ → specific to B cells
+- _MS4A1_ (CD20) → a clinically-important antigen used as a target to treat B cell-related diseases, such as leukemia. Cells with this antigen are referred to as CD20+ B cells.
+
+Let's visualise these markers' expression in our clusters:
+
+```{r all_marker_violins}
+# cell type specific genes
+known_genes <- c(
+  "HBA1", # erythrocytes
+  "CST3", # monocytes
+  "CD3E", # T cells
+  "NKG7", # NK T cells
+  "CD79A",  # B cells
+  "MS4A1" # CD20 B cells
+  )
+
+# violin plot
+plotExpression(sce, x = "label", features = known_genes)
+
+# scaled heatmap of expression
+plotGroupedHeatmap(sce, 
+                   features = known_genes,
+                   group = "label",
+                   block = "SampleGroup", 
+                   scale = TRUE, center = TRUE, 
+                   zlim = c(-3, 3))
+```
+
+Based on the expression patterns for these cells, we classify these clusters as follows: 
+
+| Cluster | Labelled Cell Type                | Evidence      |
+| :------ | :-------------------------------- | :------------ |
+| 1       | B cells                           | CD79A         |
+| 2       | B cells                           | CD79A         |
+| 3       | B cells                           | CD79A         |
+| 4       | B cells                           | CD79A         |
+| 5       | CD20+ B cells                     | CD79A + MS4A1 |
+| 6       | T cells                           | CD3D          |
+| 7       | NK T cells                        | CD3D + NKG7   |
+| 8       | Erythrocytes                      | HBA1          |
+| 9       | Erythrocytes                      | HBA1          |
+| 10      | Erythrocytes                      | HBA1          |
+| 11      | Monocytes                         | CST3          |
+| 12      | B cells                           | CD79A         |
+
+
+Now that we have a more meaningful annotation for our clusters, let's add this to our `SingleCellExperiment` object.
+We will also add the original cluster ID in parenthesis to remind ourselves that this annotation was done based on the clusters. 
+
+The cell labels are stored in the `SingleCellExperiment` object as a _factor_ (a type of object in R to store categorical data), and so we can change the labels using the `levels()` function, like so:
+
+```{r relabel}
+# re-label the cells - original cluster in parenthesis
+levels(colLabels(sce)) <- c("B (c1)", "B (c2)", 
+                            "B (c3)", "B (c4)",
+                            "CD20+ B (c5)", 
+                            "T (c6)", "NK T (c7)", 
+                            "Erythrocytes (c8)", "Erythrocytes (c9)", 
+                            "Erythrocytes c(10)",
+                            "Monocytes (c11)", "B (c12)")
+```
+
+Now, when we label our UMAP, we can see the new labels, which are more intutitive to interpret:
+
+```{r umap_relabel}
+# visualise UMAP with new labels
+plotReducedDim(sce, dimred = "UMAP_corrected", 
+               colour_by = "label", text_by = "label")
+```
+
+## (Bonus) Further exploration
+
+### Erythrocytes
+
+Looking at the expression of _HBA1_ and _HBA2_: 
+
+```{r, purl=FALSE}
+# note we rotate the axis labels for convenience
+# this uses standard ggplot2 syntax, see:
+# https://stackoverflow.com/a/60650595/5023162
+plotExpression(sce, x = "label", features = c("HBA1", "HBA2")) +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+```
+
+You may notice that there is a lot of background expression across several cell clusters. 
+_HBA1_ and _HBA2_ are common components of the **"soup" or ambient RNA** in scRNA-seq experiments involving blood cells. 
+Hemoglobin chains, such as _HBA1_ and _HBA2_, are very highly expressed in red blood cells and burst red blood cells will contribute their RNA to the medium from which the cells are loaded into the 10X Chromium machine. 
+Some of this medium, or "soup", containing ambient RNA is captured with each cell. 
+There are methods available to correct for soup in your analysis such as [SoupX](https://academic.oup.com/gigascience/article/9/12/giaa151/6049831).
+
+
+
+
