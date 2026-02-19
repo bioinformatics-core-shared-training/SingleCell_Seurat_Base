@@ -163,15 +163,33 @@ Idents(seurat_object) <- "Idents"
 
 saveRDS(seurat_object, file = "../RObjects/Annotated.full.rds")
 
+### divide to ETV6RUNX1 vs PBMMC and PRET vs HDD
+#seurat_object <- readRDS("../RObjects/Annotated.full.rds")
 seurat_object_EP <- subset(seurat_object, 
                         subset = SampleGroup == "ETV6RUNX1" | SampleGroup == "PBMMC")
+# drop factor levels to avoid issues with downstream analyses
+seurat_object_EP@meta.data$orig.ident <- droplevels(seurat_object_EP@meta.data$orig.ident)
+levels(seurat_object_EP@meta.data$orig.ident)
+seurat_object_EP@meta.data$SampleName <- droplevels(seurat_object_EP@meta.data$SampleName)
+levels(seurat_object_EP@meta.data$SampleName)
+
 saveRDS(seurat_object_EP, "../RObjects/Annotated.full.ETV6.PBMMC.rds")
 library(SingleCellExperiment)
 sce_object_EP <- as.SingleCellExperiment(seurat_object_EP)
+colLabels(sce_object_EP) <- Idents(seurat_object_EP)
 saveRDS(sce_object_EP, "../RObjects/Annotated.full.ETV6.PBMMC.sce.rds")
+
 
 seurat_object_HP <- subset(seurat_object,
                            subset = SampleGroup == "PRET" | SampleGroup == "HDD")
+# drop factor levels to avoid issues with downstream analyses
+
+seurat_object_HP@meta.data$orig.ident <- droplevels(seurat_object_HP@meta.data$orig.ident)
+levels(seurat_object_HP@meta.data$orig.ident)
+seurat_object_HP@meta.data$SampleName <- droplevels(seurat_object_HP@meta.data$SampleName)
+levels(seurat_object_HP@meta.data$SampleName)
+
 saveRDS(seurat_object_HP, "../RObjects/Annotated.full.PRET.HDD.rds")
 sce_object_HP <- as.SingleCellExperiment(seurat_object_HP)
+colLabels(sce_object_HP) <- Idents(seurat_object_HP)
 saveRDS(sce_object_HP, "../RObjects/Annotated.full.PRET.HDD.sce.rds")

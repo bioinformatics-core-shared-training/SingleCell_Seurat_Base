@@ -59,4 +59,12 @@ plotReducedDim(sce_object, "UMAP", colour_by = "leiden_cluster")
 DimPlot(seurat_object, reduction = "umap", group.by = "leiden_cluster")
 ```
 
-This looks the same as our UMAP plot from the Seurat object, so we can be confident that the conversion was successful. We can now use this SCE object for downstream analysis using Bioconductor packages.
+This looks the same as our UMAP plot from the Seurat object, so we can be confident that the conversion was successful. 
+
+There is one more step we need to do. Like Seurat using the `Idents` to store our cell identities (in our case celltypes), the SingleCellExperiment object uses `labels`. We can transfer our identity information from the Seurat object to the SCE object using the `colLabels` function.
+
+```{r transfer labels}
+colLabels(sce_object) <- Idents(seurat_object)
+```
+
+We can now use this SCE object for downstream analysis using Bioconductor packages.

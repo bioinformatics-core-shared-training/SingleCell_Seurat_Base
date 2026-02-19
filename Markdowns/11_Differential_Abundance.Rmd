@@ -1,0 +1,365 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+subtitle: "Differential Abundance Analysis with MiloR"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    pandoc_args: ["--number-offset", "10"] # TOC will start at 11
+    code_folding: show
+    css: ../css/boxes.css
+---
+
+## Differential Abundance Analysis
+
+In the previous section we discussed how we can perform differential expression analysis using pseudo-bulk samples, when multiple _biological replicates_ are available in a multi-condition experiment. 
+Differential expression analysis addresses the question of whether a gene has a different average expression between the two groups being compared. 
+However, another useful question to address is whether the _cell composition_ also differs between conditions. 
+We could imagine, for example, that natural killer cells are more abundant in leukemia samples than in healthy samples. 
+
+```{r libraries}
+# load packages
+library(BiocParallel)
+library(scran)
+library(scater)
+library(miloR)
+library(tidyverse)
+library(patchwork)
+```
+
+```{r, loaddata}
+# Load data
+sce <- readRDS("RObjects/Annotated.full.ETV6.PBMMC.sce.rds")
+```
+
+This type of analysis is referred to as **differential abundance analysis**. 
+
+We will continue working with our PBMMC and ETV6-RUNX1 samples, as we did in the differential expression section. 
+
+One method to perform DA analysis is to simply count how many cells occur in each label + condition combination and then test for differences in the counts between the two conditions. 
+
+```{r, purl=FALSE}
+table(sce$label, sce$SampleName)
+```
+
+As these are count data, statistical methods used in flow-cytometry have been adapted to test for differences in cell abundance from such a matrix of counts. This is the approach used in the [Differential Abundance Analysis](http://bioconductor.org/books/3.16/OSCA.multisample/differential-abundance.html) chapter in the OSCA book. However, this approach does not take into account the fact that cells are not independent observations, but rather are related to each other in a complex way.
+
+This approach also relies on a fixed set of clusters determined by us beforehand, which can be limiting in cases where the changes in abundance are more continuous (e.g. along a developmental trajectory, or where cell states are not completely discrete).
+To address this limitation, [Dann et al. (2022)](https://doi.org/10.1038/s41587-021-01033-z) developed a method where cell abundance differences are tested along neighbourhoods of cells on a KNN graph. 
+This means that the results aren't dependent on our clustering results, and are instead treated in a more "continuous" way. 
+
+To address this issue, we can use a method called **Milo**.
+
+This method has been implemented by the authors in the R/Bioconductor package [`MiloR`](https://bioconductor.org/packages/release/bioc/html/miloR.html), which we cover in this section. 
+Starting from a graph that faithfully recapitulates the biology of the cell population, the _Milo_ analysis consists of 3 steps:
+
+- Building a k-nearest neighbours (KNN) graph
+- Sampling representative neighbourhoods in the graph (for computational efficiency)
+- Testing for differential abundance of conditions in all neighbourhoods
+- Accounting for multiple hypothesis testing using a weighted FDR procedure that accounts for the overlap of neighbourhoods
+
+As the package was written by the authors of the `scater`/`scran` suite of packages for Bioconductor the structures unpinning it are based on `SingleCellExperiment`. The previous add-on section demonstrated how we can easily convert our `Seurat` object to a `SingleCellExperiment` object. The next step in the analysis is to turn our single cell object into a `Milo` object. 
+This is very similar to the `SingleCellExperiment` object, but also includes information about the neighbourhood graphs that are built during the analysis.
+
+```{r setobject}
+# check the contents of the object
+sce
+
+# plot UMAP done on the batch-corrected data
+plotReducedDim(sce, dimred = "UMAP", 
+               colour_by = "label", 
+               text_by = "label")
+
+# convert to a Milo object
+
+milo <- Milo(sce)
+
+milo
+```
+
+Notice how there are now several slots with prefix `nhoods`, which we will explore as we go through the analysis. 
+
+## Construct KNN graph
+
+```{r}
+
+# Build KNN graph ----
+```
+
+The first step in our analysis is to build a KNN graph from our cells. 
+This is very similar to what we did earlier in the clustering session, except now the graph will be stored _inside_ the object: 
+
+```{r build_graph}
+# add KNN graph to Milo object
+milo <- buildGraph(milo, 
+                   k = 60, 
+                   d = 50, 
+                   reduced.dim = "HARMONY", 
+                   BPPARAM = MulticoreParam(7))
+```
+
+A couple of things to note about this:
+
+- `k` is the number of nearest neighbours to build the graph. 
+  This can be adjusted depending on how much of a fine resolution you want. 
+  If you use too high a number, you will end up loosing resolution as a higher diversity of cells will be connected in the graph. 
+  On the other hand, if you use too low a number, you may increase noise in the data and loose statistical power, as only very few cells will be connected to each other in a neighbourhood. 
+  The author's recommendation is to use a value of _k_ as you did for clustering and UMAP visualisation - this is what we've done in this case. 
+- `d` is the number of dimensions from our dimensionality reduction matrix to use. 
+  In this case we're using the MNN-corrected matrix, which contains 50 dimensions, and we use all of them (50 is also the default, so we could have left this option out).
+
+The object now has a new object inside the `graph` slot, which a standard object type from the [igraph package](https://igraph.org/r/): 
+
+```{r graph_slot, purl=FALSE}
+# the graph is stored as a standard igraph object
+graph(milo)
+```
+
+
+## Define neighbourhoods
+
+The next step in the analysis is to define cell neighbourhoods. 
+This essentially consists of picking a focal cell and counting how many other cells it is connected to in the graph (and how many come from each group under comparison). 
+However, if we did this for every single cell in the data, it could get computationally quite intractable. 
+Instead, _Milo_ implements a sampling step, where so-called "index cells" are sampled from the larger graph, and those will be the neighbourhoods used in the DA analysis. 
+
+This is done with the `makeNhodds()` function: 
+
+```{r make_neighbourhoods, message=FALSE}
+# sample index cells to define neighbourhoods
+milo <- makeNhoods(milo, 
+                   prop = 0.1, 
+                   k = 48, 
+                   d = 50, 
+                   reduced_dims = "HARMONY")
+
+# check our object again
+milo
+```
+
+Some things to note: 
+
+- `prop` is the proportion of cells to sample (the authors advise 0.1 - 0.2).
+- `k` and `d` should be set the same as the _k_ value used to build the original KNN graph. 
+  These values will be used for the graph-sampling algorithm used behind the scenes. 
+
+We can also see that our Milo object now has the `nhoods` slots populated.
+In this case, it indicates that the sampling algorithm picked `r length(nhoodIndex(milo))` index cells to form neighbourhoods for DA analysis. 
+
+One good QC metric to check at this stage is to create a histogram of cell counts per neighbourhood. 
+Like we said earlier, when we set the value of _k_ to define our KNN graph, we want to make sure the value is not too low, such that most neighbourhoods have very few cells, nor for it to be so high that we have very large (and presumably heterogenous) neighbourhoods. 
+
+Conveniently, `MiloR` has a plotting function just for this purpose: 
+
+```{r plot_neighbourhood_sizes, message=FALSE}
+# distribution of neighbourhood sizes
+plotNhoodSizeHist(milo) +
+  geom_vline(xintercept = 100, col = "salmon")
+```
+
+The authors of Milo have stated several different parameters of deciding if your histogram is correct. 
+Either 'peaking above 20', 'peaking between 50 and 100' or 'an average neighbourhood size over 5 x N_samples'. 
+Realistically, all of these statements give numbers in the same ballpark and so we can make a judgement on our data. 
+In our case, we can see that our histogram peaks at ~100, suggesting a good neighbourhood size. 
+If this was not the case, we could re-run the analysis from the start, making a KNN graph with a higher/lower `k` value. 
+
+
+## Counting cells
+
+After defining our sample of neighbourhoods, the next step consists of counting how many cells there are in each neighbourhood for each sample replicate. 
+In this step we need to define which column of our metadata we want to use to do the counting. 
+We should count cells at the biological replicate leve, which in our case is stored in the `SampleName` column.
+
+```{r count_cells, message=FALSE}
+# count cells in each neighbourhood
+milo <- countCells(milo, 
+                   meta.data = colData(milo),
+                   samples = "SampleName")
+
+# Milo now has a counts matrix
+head(nhoodCounts(milo))
+```
+
+The dimensions of the counts matrix corresponds to the number of neighbourhoods (rows) and samples (columns), in our case a `r nrow(nhoodCounts(milo))` by `r ncol(nhoodCounts(milo))` matrix. 
+
+
+## Neighbourhood connectivity
+
+```{r, echo=FALSE}
+
+# Run DA analysis ----
+```
+
+There is one more step that we need to do before we are ready to run our DA analysis. 
+It consists of calculating the distances between each neighbourhood. 
+As we said, the neighbourhoods on our graph may partially overlap, so when Milo corrects our p-values for multiple testing, it takes into account the spatial dependence of our tests. 
+For example, neighbourhoods that are closer to each other may have similar p-values, and so we should avoid penalising them too much, otherwise we will sacrifice statistical power.
+
+```{r calcultate_neighbourhood_distance, message=FALSE}
+# calculate distances between neighbourhoods - for p-value correction
+# This step takes a few minutes
+milo <- calcNhoodDistance(milo, d = 50, reduced.dim = "HARMONY")
+```
+
+As before, the value of `d` (number of dimensions to consider from our MNN-corrected matrix) should be the same that was used for building our initial graph. 
+
+
+## Running DA tests
+
+Finally, we are ready to run the actual differential abundance step. 
+Similarly to the pseudo-bulk appproach for differential expression, `MiloR` takes advantage of the `edgeR` package and its negative binomial linear model implementation. 
+This provides a suitable statistical model to account for over-dispersed count data, as is common with these kind of datasets. 
+
+First, we need to define a simple table with information about our samples - we will use this table to define our model formula (similarly to what we did in the differential expression step). 
+In this case, we want to detect DA between our PBMMC and ETV6-RUNX1 sample groups, so we define a table based on those two groups. 
+We could also include a batch column in this table, but to keep the demonstration simple we will skip this. 
+We would normally do this if we know there is a batch effect that we want to account for it in DA testing.
+
+```{r milo_design, message=FALSE}
+# define a table for our model design
+sample_info <- unique(colData(milo)[,c("SampleName", "SampleGroup")])
+rownames(sample_info) <- sample_info$SampleName
+
+sample_info
+```
+
+Now we can do the DA test, explicitly defining our experimental design. In this case as discussed we will test the difference between sample groups. The `testNhoods` function calculates a Fold-change and corrected P-value for each neighbourhood, which indicates whether there is significant differential abundance between sample groups.
+
+```{r test_neighbourhoods, message=FALSE}
+# run DA test
+da_results <- testNhoods(milo, 
+                         design = ~ SampleGroup, 
+                         design.df = sample_info, 
+                         reduced.dim = "HARMONY")
+
+# results are returned as a data.frame
+da_results %>%
+  arrange(SpatialFDR) %>%
+  head()
+```
+
+
+## Inspecting DA results
+
+A good diagnostic plot to make after running our analysis is a histogram of p-values. 
+We should expect a distribution with a peak close to 0 (corresponding to differentially abundant neighbourhoods) and tailing off towards 1. 
+This [blog article](http://varianceexplained.org/statistics/interpreting-pvalue-histogram/) explains the different p-value histogram profiles you may see and what they can mean.
+
+```{r plot_DA_pvalue_histogram, message=FALSE}
+# p-value histogram
+ggplot(da_results, aes(PValue)) + 
+  geom_histogram(bins = 50)
+```
+
+Next, we can get an overview of our results as a volcano plot, marking a significance threshold of 10% FDR:
+
+```{r plot_DA_volcano, message=FALSE}
+# volcano plot
+# each point in this plot corresponds to a neighbourhood (not a cell)
+ggplot(da_results, aes(logFC, -log10(SpatialFDR))) + 
+  geom_point(aes(colour = FDR < 0.1)) +
+  geom_hline(yintercept = 1) 
+```
+
+As we can see, several neighbourhoods fall below our FDR threshold, indicating significant differential abundance of cells between PBMMC and ETV6-RUNX1 samples. 
+
+There is an unsual discontinuity in our logFC axis, suggesting a sudden change in abundance in some of our neighbourhoods. 
+We can get a better idea of the fold changes by visualising them as a graph for our neighbourhoods (rather than the original single-cell graph, which would be too big to display). 
+We can then super-impose this graph on our original UMAP (or t-SNE), to compare with our original analysis. 
+
+```{r build_neighbourhood_graph, message=FALSE}
+# build neighbourhood graph embedding
+milo <- buildNhoodGraph(milo)
+```
+
+```{r visualise_results, message=FALSE}
+# our original UMAP with our previously annotated cell labels
+umap_plot <- plotReducedDim(milo, 
+                            dimred = "UMAP", 
+                            colour_by = "label", 
+                            text_by = "label")
+
+# the neighbourhood map adjusted to match UMAP embedding
+nh_graph_plot <- plotNhoodGraphDA(milo, 
+                                  da_results, 
+                                  layout = "UMAP",
+                                  alpha = 0.05)
+
+# the two plots together side-by-side
+umap_plot + nh_graph_plot +
+  plot_layout(guides="collect")
+```
+
+On the left we have our original UMAP, with cell/cluster annotations we did previously (by standard clustering and using known marker genes to manually annotate our cells). 
+On the right we have the _Milo_ neighbourhood graph, where each node represents a neighbourhood, coloured by the log fold-change in abundance between PBMMC and ETV6-RUNX1 samples (positive values represent higher abundance in ETV6-RUNX1, and vice-versa). 
+We can see, for example, a cluster of cells with negative log fold changes around our large B cell cluster, which likely explains the discontinuity in values we saw earlier in our volcano plot. 
+
+Although we have annotations for our cells, these annotations at the moment are not present in the differential abundance table: 
+
+```{r, purl=FALSE}
+head(da_results)
+```
+
+We can transfer our cell labels to the neighbourhood DA results, by simply counting how many cells within that neighbourhood share the same label, and assign the label with the highest counts. 
+
+```{r annotate_nhoods}
+# annotate our neighbourhood DA results with our cell labels
+da_results <- annotateNhoods(milo, da_results, coldata_col = "label")
+head(da_results)
+```
+
+The result includes the fraction of cells in the neighbourhood that shared that label. 
+We can look at the distribution of this fraction as a quality check: 
+
+```{r histogram_label_fraction}
+# histogram of fraction of cells in the neighbourhood with the same label
+ggplot(da_results, aes(label_fraction)) + 
+  geom_histogram(bins = 50)
+```
+
+We should expect the plot to be very biased towards 1, as is seen. 
+This makes sense, since Milo's neighbourhoods should be very similar to our previously-defined clusters. 
+After all, both our clustering and _Milo_ used KNN graphs as the starting point, and we've used the same settings for the _k_ and _d_ parameters in both steps of our analysis. 
+
+Despite most neighbourhoods being homogenous, some seem to have mixed labels. 
+We can highlight these in our results table:
+
+```{r excluded_mixed_neighbourhoods, message=FALSE}
+# add "mixed" label to neighbourhoods with less 70% consistency
+da_results$label <- ifelse(da_results$label_fraction < 0.7, 
+                           "Mixed", 
+                           da_results$label)
+
+head(da_results)
+```
+
+Finally, we can visualise the distribution of DA fold changes in different labels.
+
+```{r beeswarm_plot_by_label, message=FALSE}
+# distribution of logFC across neighbourhood labels
+plotDAbeeswarm(da_results, group.by = "label")
+```
+
+We can see that several clusters are enriched and some are depleted between our sample groups. 
+There are not many DA neighbourhoods with a mixed label either.
+And we can see that B cells cluster 1 has quite a discontinuity in log fold changes - this is what was causing the odd distribution in the volcano plot, and we saw earlier is likely due to a sub-population of B cells with different representation across our samples. 
+
+It is also worth noting that this analysis may also reveal uncorrected batch effects, which would lead to an artificial separation of our samples according to their group. 
+As always, we should always proceed in our analysis with care and back our conclusions with further confirmatory experiments. 
+
+There are further downstream analysis possible to identify genes that differentiate between our different neighbourhoods. 
+This is similar in spirit to the marker gene analysis we did earlier, but based on the neighbourhood graph constructed by Milo. 
+You can consult the [package's main vignette](https://bioconductor.org/packages/release/bioc/vignettes/miloR/inst/doc/milo_gastrulation.html#5_Finding_markers_of_DA_populations) to see examples of these downstream analysis. 
+
+
+## Session information
+
+<details><summary>`sessionInfo()`</summary>
+
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+</details>
