@@ -1,6 +1,5 @@
 ---
 title: "Introduction to single-cell RNA-seq analysis"
-subtitle: "Cluster Marker Genes"
 output:
   html_document:
     toc: yes
@@ -12,7 +11,17 @@ output:
     css: ../css/boxes.css
 ---
 
-# Introduction
+# Cluster Marker Genes
+
+```{r setup, include=FALSE, purl=FALSE}
+# Move all the course files to the `course_files` folder
+# This setup makes sure the working directory is set to this folder
+# All paths are relative to it, so participant scripts work when we purl it
+knitr::opts_chunk$set(echo = TRUE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
+set.seed(123)
+```
 
 In order to aid the interpretation of the clustering results that we covered in
 the [previous section](08_Clustering.html), it is helpful to identify genes that
@@ -32,6 +41,7 @@ contains additional detail and advice.
 ## Load Data
 
 ```{r libraries, message=FALSE, warning=FALSE}
+# load the libraries
 library(Seurat)
 library(sctransform)
 library(glmGamPoi)
@@ -41,19 +51,30 @@ library(patchwork)
 
 First we will load in a version of our data that has been processed up until this point in the course. QCed, normalised, dimensionality reduced and clustered. 
 
-```{r data}
-seurat_object <- readRDS("../RObjects/Clustered.500.rds")
+
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r, include=FALSE}
+
+#### Load data ####
 ```
+
+```{r data}
+# load in the data
+seurat_object <- readRDS("RObjects/Clustered.500.rds")
+```
+
 The cluster information is stored in our objects `meta.data` slot and is called "leiden_cluster". 
 
 To remind ourselves, we can visualise the clusters on a UMAP:
 
 ```{r umap}
+# visualise UMAP with cluster labels
 DimPlot(seurat_object,
         reduction = "umap",
         group.by = "leiden_cluster",
         label = TRUE,
-        label.size = 5) + NoLegend()
+        label.size = 5) +
+  NoLegend()
 ```
 
 Our objective is to identify genes that distinguish these clusters from one
@@ -72,6 +93,12 @@ FeaturePlot(seurat_object,
 
 ## Identifying cluster marker genes
 
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r leiden_k20_res0.8, include=FALSE}
+
+#### Identifying cluster marker genes ####
+```
+
 Although we have defined our clusters based on the batch-corrected expression
 values, these should **not** be used for for gene-based analyses like marker
 gene detection. Instead, we should **use the uncorrected (normalised) expression
@@ -83,17 +110,24 @@ differential analysis. Furthermore, the severity of these biases is dependent on
 the parameters used for data integration.
 
 Valid assays to use in gene based differential analysis tests are the normalised
-counts obtained from the SCTransform methodand stored int he "SCT" assay. 
+counts obtained from the SCTransform method and stored in the "SCT" assay. 
 
-Seurat has two functions we can use for this, `FindMarkers()` and `FindAllMarkers()`. The former allows us to compare two clusters at a time, in a pairwise manner. The latter automates this for all clusters but can also be used to test groups of clusters against other clusters or against all cells.
+Seurat has two functions we can use for this, `FindMarkers()` and `FindAllMarkers()`. 
+The former allows us to compare two clusters at a time, in a pairwise manner. 
+The latter automates this for all clusters but can also be used to test groups of clusters against other clusters or against all cells.
 
-Prior to performing differential expression, we first run PrepSCTFindMarkers. 
+Prior to performing differential expression, we first run `PrepSCTFindMarkers()`. 
 
-"This allows us to use the ‘corrected counts’ that are stored in the data slot of the the SCT assay. Corrected counts are obtained by setting the sequencing depth for all the cells to a fixed value and reversing the learned regularized negative-binomial regression model. PrepSCTFindMarkers() ensures that the fixed value is set properly."
-  -- Seurat Vignette
+> "This allows us to use the "corrected counts" that are stored in the data slot of the the SCT assay. 
+> Corrected counts are obtained by setting the sequencing depth for all the cells to a fixed value and reversing the learned regularized negative-binomial regression model. 
+> `PrepSCTFindMarkers()` ensures that the fixed value is set properly."
+> 
+>   -- Seurat Vignette
 
 ```{r prepmarkers}
-seurat_object <- PrepSCTFindMarkers(seurat_object, assay = "SCT")
+# prepare the data for marker gene detection
+seurat_object <- PrepSCTFindMarkers(seurat_object,
+                                    assay = "SCT")
 ```
 
 
@@ -102,13 +136,13 @@ seurat_object <- PrepSCTFindMarkers(seurat_object, assay = "SCT")
 To find markers of a single cluster, we can use `FindMarkers()`. For example, to find genes that are differentially expressed in cluster 2 compared to all other clusters:
 
 ```{r findmarkers2}
-# takes about 6 mins to run without presto (teabreak?)
+# Compare cells in cluster 2 against all other cells
 markers_cluster2 <- FindMarkers(seurat_object,
-                               ident.1 = 2,
-                               ident.2 = NULL,
-                               assay = "SCT",
-                               group.by = "leiden_cluster")
-markers_cluster2 %>% head()
+                                ident.1 = 2,
+                                ident.2 = NULL,
+                                assay = "SCT",
+                                group.by = "leiden_cluster")
+head(markers_cluster2)
 ```
 
 The output is a data frame with the following columns:
@@ -118,26 +152,45 @@ The output is a data frame with the following columns:
 - `pct.2`: percentage of cells in the other clusters that express the gene
 - `p_val_adj`: adjusted p-value for multiple testing
 
-Using pvalues is inappropriate for marker gene detection. This is because the differential expression is performed on the same data used to obtain the clusters and would therefore be "data dredging". If we have used gene expression to seperate the cells into clusters we would expect thre to be a difference in expression between clusters. Admitedly, if simply used to identify possible marker genes by ranking this is largely harmless but it becuse problematic when the pvalues are used to claim statistically significant seperation between clusters. There is also an issue of pseudoreplication where in this type of differential application cells from the same cluster are treated as replicates when infact cells from the same sample are not independent. There is a more detailed discussion of these issues here. https://bioconductor.org/books/3.14/OSCA.advanced/marker-detection-redux.html
+Using pvalues is inappropriate for marker gene detection. 
+This is because the differential expression is performed on the same data used to obtain the clusters and would therefore be "data dredging". 
+If we have used gene expression to separate the cells into clusters we would expect thre to be a difference in expression between clusters. 
+Admitedly, if simply used to identify possible marker genes by ranking this is largely harmless but it becuse problematic when the pvalues are used to claim statistically significant seperation between clusters. 
+There is also an issue of pseudoreplication where in this type of differential application cells from the same cluster are treated as replicates when infact cells from the same sample are not independent. 
+There is a more detailed discussion of these issues in the [OSCA book](https://bioconductor.org/books/3.14/OSCA.advanced/marker-detection-redux.html). 
 
-Instead, we should use the log fold change and percentage of cells expressing the gene to identify marker genes. For example, we could filter for genes that are expressed in at least 70% of cells in cluster 2 and have a log fold change greater than 1:
+Instead, we should use the log fold change and percentage of cells expressing the gene to identify marker genes. 
+For example, we could filter for genes that are expressed in at least 70% of cells in cluster 2 and have a log fold change greater than 1:
 
 ```{r filtermarkers2}
+# filter for genes that:
+#  - are expressed in at least 70% of cells in cluster 2
+#  - and have a log fold change greater than 1
 markers_cluster2_filtered <- markers_cluster2 %>%
-  filter(pct.1 > 0.70, abs(avg_log2FC) > 1)
-markers_cluster2_filtered %>% head()
+  filter(pct.1 > 0.70 & abs(avg_log2FC) > 1)
+
+head(markers_cluster2_filtered)
 ```
 
+This leaves us with `r nrow(markers_cluster2_filtered)` genes that are potential markers of cluster 2.
 We can plot some of these marker genes on the UMAP.
 
 ```{r markerPlots}
-Fplot <- FeaturePlot(seurat_object, features = "SKAP1", reduction = "umap")
-Vplot <- VlnPlot(seurat_object, features = "SKAP1", 
+# visualise the expression of one of the marker genes on the UMAP
+fplot <- FeaturePlot(seurat_object, 
+                     features = "SKAP1",
+                     label = TRUE,
+                     reduction = "umap")
+
+# As a violin plot
+vplot <- VlnPlot(seurat_object, features = "SKAP1",
                  group.by = "leiden_cluster",
-                 pt.size = 0) + NoLegend()
-Fplot + Vplot + plot_layout(ncol = 2)
+                 pt.size = 0) + 
+  NoLegend()
+
 # SKAP1 is a TCR gene
-# Also appears in cluster 9 which if we look back at UMAP by cluster is next to it.
+# It also appears in cluster 11 next to it
+fplot + vplot + plot_layout(ncol = 2)
 ```
 
 ### Finding markers of all clusters
@@ -145,14 +198,16 @@ Fplot + Vplot + plot_layout(ncol = 2)
 To do the same process but for all clusters we use `FindAllMarkers()`. 
 
 ```{r findallmarkers}
-
+# find markers for all clusters automatically
 markers_all <- FindAllMarkers(seurat_object,
                               assay = "SCT",
                               group.by = "leiden_cluster")
-markers_all %>% head()
+
+head(markers_all)
 ```
 
 The output is a data frame with the following columns:
+
 - `gene`: gene name
 - `cluster`: cluster number
 - `p_val`: p-value of the test
@@ -163,64 +218,121 @@ The output is a data frame with the following columns:
 
 We can filter the dataframe to get the same information as we did before. To get the marker genes for cluster 2:
 
-```{r filterallmarkers2}
+```{r filterallmarkers2, message=FALSE, warning=FALSE}
+# filter the results for cluster 2
+# we should get the same results as before
 markers_all_cluster2 <- markers_all %>%
-  filter(cluster == 2, pct.1 > 0.70, abs(avg_log2FC) > 1)
-markers_all_cluster2 %>% head()
+  filter(cluster == 2 & pct.1 > 0.70 & abs(avg_log2FC) > 1)
+
+head(markers_all_cluster2)
 ```
 
-We can see we have the same 29 genes.
+We can see we have the same `r nrow(markers_all_cluster2)` genes.
 
 ## Exercise 1
 
 :::exercise
 
-We saw earlier that known monocyte marker CST3 was expressed in cluster 13. Use the FindMarkers() function or the FindAllMarkers() function to investigate what other potentially good marker genes would be for that cluster.
+We saw earlier that known monocyte marker _CST3_ was expressed in cluster 13. 
+Use the `FindMarkers()` function or the `FindAllMarkers()` function to investigate what other potentially good marker genes would be for that cluster.
+
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+
+#### Exercise: cluster 13 markers ####
+
+# Use either the FindMarkers() function or the FindAllMarkers() function
+# to identify potential marker genes for cluster 13
+# YOUR CODE HERE
+```
+
 
 <details><summary>Answer</summary>
 
 ```{r exercise1, purl=FALSE}
 # using FindMarkers()
 markers_cluster13 <- FindMarkers(seurat_object,
-                               ident.1 = 13,
-                               ident.2 = NULL,
-                               assay = "SCT",
-                               group.by = "leiden_cluster")
-markers_cluster13_filtered <- markers_cluster13 %>%
-  filter(pct.1 > 0.70, abs(avg_log2FC) > 1)
-         
-markers_cluster13_filtered %>% head()
+                                 ident.1 = 13,
+                                 ident.2 = NULL,
+                                 assay = "SCT",
+                                 group.by = "leiden_cluster")
 
+markers_cluster13_filtered <- markers_cluster13 %>%
+  filter(pct.1 > 0.70 & abs(avg_log2FC) > 1)
+
+head(markers_cluster13_filtered)
+```
+
+We could also filter our `markers_all` dataframe to get the same information:
+
+```{r exercise1_findallmarkers, purl=FALSE}
+# filter the markers_all dataframe for cluster 13
+markers_cluster13_all <- markers_all %>%
+  filter(cluster == 13 & pct.1 > 0.70 & abs(avg_log2FC) > 1)
+
+head(markers_cluster13_all)
+```
+
+This gives us `r nrow(markers_cluster13_filtered)` potential marker genes for cluster 13.
+
+If we think these are too many, we could be more stringent with our filtering criteria, for example by increasing the log fold change threshold:
+
+```{r exercise1_stricter, purl=FALSE}
+# very high log fold change threshold
+markers_cluster13_stricter <- markers_cluster13 %>%
+  filter(pct.1 > 0.70 & abs(avg_log2FC) > 4)
+
+# results in only 20 genes
+nrow(markers_cluster13_stricter)
 ```
 
 </details>
+:::
 
 ## Heatmap of marker genes
 
-We have already seen how we can use the `VlnPlot()` function to visualise
-the distribution of expression in our data between clusters. We have also seen
-how to use `FeaturePlot()` to visualise a gene's expression on the projected
-reduced dimensionality space.
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
 
-Another useful type of visualisation is to use **heatmaps** to show the
-expression of these genes of interest. 
-We will demonstrate this using the top marker genes for cluster 13. Lets take the top 20 genes from our filtered markers.
+#### Heatmap visualisations ####
+```
 
-```{r heatmap}
+We have already seen how we can use the `VlnPlot()` function to visualise the distribution of expression in our data between clusters. 
+We have also seen how to use `FeaturePlot()` to visualise a gene's expression on the projected reduced dimensionality space.
+
+Another useful type of visualisation is to use **heatmaps** to show the expression of these genes of interest. 
+We will demonstrate this using the top marker genes for cluster 13. 
+Lets take the top 20 genes from our filtered markers.
+
+```{r heatmap, warning=FALSE, message=FALSE}
 # top 20 marker genes for cluster 13
 top_markers_cluster13 <- markers_cluster13_filtered %>%
-  top_n(n = 20, wt = abs(avg_log2FC)) %>%
+  slice_max(n = 20, order_by = abs(avg_log2FC)) %>%
   rownames()
 
 # heatmap of expression for these genes
+# we change default colour scale
+# and remove colour legend (clusters)
+DoHeatmap(seurat_object,
+          features = top_markers_cluster13,
+          group.by = "leiden_cluster") +
+  scale_fill_viridis_c() +
+  guides(colour = "none")
+```
 
-DoHeatmap(seurat_object, 
-          features = top_markers_cluster13, 
-          group.by = "leiden_cluster") + scale_fill_gradientn(colors = c("navy", "white", "firebrick")) # seurat default colours are ugly
+Another useful visualisation is to use dot plots of expression that show both the average gene expression (as a colour scale) and the number of cells in which the gene is detected (as the size of the points).
+We can generate such a plot using the plotDots() function:
 
-
-
-
+```{r plotDots, warning=FALSE, message=FALSE}
+# dot plot of expression for these genes
+# we change default colour scale
+# and rotate x-axis labels for better visibility
+DotPlot(seurat_object, 
+        features = top_markers_cluster13,
+        group.by = "leiden_cluster") +
+  scale_colour_viridis_c() +
+  theme(axis.text.x = element_text(angle = 45, 
+                                   hjust = 1))
 ```
 
 ## Cell Type Labelling
@@ -242,22 +354,29 @@ To learn more about these approaches, read the chapter on [cell type annotation 
 
 ## Manual annotation
 
+<!-- Note: this code chunk is here so we purl it into the participant script -->
+```{r include=FALSE}
+
+#### Manual cell labelling ####
+```
+
 A lot is known about immune cell markers, in particular as many surface markers have been identified as useful for [immunophenotyping](https://en.m.wikipedia.org/wiki/Cluster_of_differentiation#Immunophenotyping). 
 
 To help us in our annotation, we start by retrieving the top-ranked genes from each cluster into a list. 
 We do this by looping through the list using the `lapply()` function and in each case picking the genes with rank < 10 for Cohen's D statistic:
 
 ```{r all_top_markers}
-# loop through all marker genes and extract top-ranked gene names for each cluster
+# loop through all marker genes 
+# and extract top-ranked gene names for each cluster
 top_markers_all <- lapply(unique(markers_all$cluster), function(x) {
   markers_all %>%
     filter(cluster == x) %>%
     filter(pct.1 > 0.70, abs(avg_log2FC) > 1) %>%
-    top_n(n = 15, wt = abs(avg_log2FC)) %>%
-    rownames()
+    slice_max(n = 15, order_by = abs(avg_log2FC)) %>%
+    pull(gene)
 })
 
-# examining this list reveals several known markers of immune cells
+# we get several known markers of immune cells
 top_markers_all
 ```
 
@@ -279,17 +398,18 @@ known_genes <- c(
   "CST3", # monocytes
   "CD3E", # T cells
   "NKG7", # NK T cells
-  "CD79A",  # B cells
+  "CD79A", # B cells
   "MS4A1" # CD20 B cells
-  )
+)
 
 # violin plot
 VlnPlot(seurat_object,
         features = known_genes,
         group.by = "leiden_cluster",
-        pt.size = 0) + NoLegend() + scale_x_discrete(guide =
-  guide_axis(angle = 45))
-
+        pt.size = 0) + 
+  NoLegend() +
+  theme(axis.text.x = element_text(angle = 45, 
+                                   hjust = 1))
 ```
 
 Based on the expression patterns for these cells, we classify these clusters as follows: 
@@ -313,39 +433,39 @@ Based on the expression patterns for these cells, we classify these clusters as 
 | 15      | Erythrocytes                      | HBA1          |
 | 16      | Unknown                           |               |
 
-Note: cluster 16 has not been identified but it's top markers seem to be tumour or cancer related genes, so it may be a cluster of tumour cells.
+Note: cluster 16 has not been identified but its top markers seem to be tumour- or cancer-related genes, so it may be a cluster of tumour cells.
 
 Now that we have a more meaningful annotation for our clusters, let's add this to our `Seurat` object.
 We will also add the original cluster ID in parenthesis to remind ourselves that this annotation was done based on the clusters. 
 
-When you have come to a decision about which clustering to use it is convenient to set `Idents` to the column name of the clustering you have chosen. This means downstream code does not need to be changed should you later decide to switch to a different clustering, you’d simply need to change the contents of the `Idents` slot. This also makes the code easily re-usable for different analyses.
+When you have come to a decision about which clustering to use it is convenient to set `Idents` to the column name of the clustering you have chosen. 
+This means downstream code does not need to be changed should you later decide to switch to a different clustering, you'd simply need to change the contents of the `Idents` slot. 
+This also makes the code easily re-usable for different analyses.
 
 ```{r relabel}
+# add new labels to the Idents column in the metadata
+seurat_object$Idents <- recode_values(
+  seurat_object$leiden_cluster,
+  "1" ~ "B (c1)",
+  "2" ~ "T (c2)",
+  "3" ~ "B (c3)",
+  "4" ~ "B (c4)",
+  "5" ~ "T (c5)",
+  "6" ~ "B (c6)",
+  "7" ~ "B (c7)",
+  "8" ~ "B (c8)",
+  "9" ~ "CD20+ B (c9)",
+  "10" ~ "T (c10)",
+  "11" ~ "NK T (c11)",
+  "12" ~ "B (c12)",
+  "13" ~ "Monocytes (c13)",
+  "14" ~ "Erythrocytes (c14)",
+  "15" ~ "Erythrocytes (c15)",
+  "16" ~ "Unknown (c16)"
+)
 
-temp_metadata <- seurat_object@meta.data %>%
-  mutate(Idents = case_when(
-    leiden_cluster == 1 ~ "B (c1)",
-    leiden_cluster == 2 ~ "T (c2)",
-    leiden_cluster == 3 ~ "B (c3)",
-    leiden_cluster == 4 ~ "B (c4)",
-    leiden_cluster == 5 ~ "T (c5)",
-    leiden_cluster == 6 ~ "B (c6)",
-    leiden_cluster == 7 ~ "B (c7)",
-    leiden_cluster == 8 ~ "B (c8)",
-    leiden_cluster == 9 ~ "CD20+ B (c9)",
-    leiden_cluster == 10 ~ "T (c10)",
-    leiden_cluster == 11 ~ "NK T (c11)",
-    leiden_cluster == 12 ~ "B (c12)",
-    leiden_cluster == 13 ~ "Monocytes (c13)",
-    leiden_cluster == 14 ~ "Erythrocytes (c14)",
-    leiden_cluster == 15 ~ "Erythrocytes (c15)",
-    leiden_cluster == 16 ~ "Unknown (c16)"
-  ))
-
-seurat_object <- AddMetaData(seurat_object, metadata = temp_metadata$Idents, col.name = "Idents")
-
+# set the Idents to the new labels
 Idents(seurat_object) <- "Idents"
-
 ```
 
 Now, when we label our UMAP, we can see the new names, which are more intutitive to interpret:
@@ -356,7 +476,8 @@ DimPlot(seurat_object,
         reduction = "umap",
         group.by = "Idents",
         label = TRUE,
-        label.size = 5) + NoLegend()
+        label.size = 5) +
+  NoLegend()
 ```
 
 ## (Bonus) Further exploration
@@ -366,10 +487,11 @@ DimPlot(seurat_object,
 Looking at the expression of _HBA1_ and _HBA2_: 
 
 ```{r, purl=FALSE}
-
+# visualise the expression of HBA1 and HBA2
 FeaturePlot(seurat_object,
             features = c("HBA1", "HBA2"),
-            reduction = "umap") + scale_x_discrete(guide = guide_axis(angle = 45))
+            reduction = "umap") +
+  scale_x_discrete(guide = guide_axis(angle = 45))
 ```
 
 You may notice that there is a lot of background expression across several cell clusters. 
@@ -378,8 +500,15 @@ Hemoglobin chains, such as _HBA1_ and _HBA2_, are very highly expressed in red b
 Some of this medium, or "soup", containing ambient RNA is captured with each cell. 
 There are methods available to correct for soup in your analysis such as [SoupX](https://academic.oup.com/gigascience/article/9/12/giaa151/6049831).
 
-```{r sessioninfo}
+----
+
+<details><summary>`sessionInfo()`</summary>
+
+```{r session_info, echo=FALSE, purl=FALSE}
 sessionInfo()
 ```
+
+</details>
+
 
 
