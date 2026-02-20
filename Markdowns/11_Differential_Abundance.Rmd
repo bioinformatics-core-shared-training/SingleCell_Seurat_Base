@@ -1,6 +1,5 @@
 ---
 title: "Introduction to single-cell RNA-seq analysis"
-subtitle: "Differential Abundance Analysis with MiloR"
 output:
   html_document:
     toc: yes
@@ -12,14 +11,28 @@ output:
     css: ../css/boxes.css
 ---
 
-## Differential Abundance Analysis
+# Differential Abundance Analysis
+
+```{r setup, include=FALSE, purl=FALSE}
+# Move all the course files to the `course_files` folder
+# This setup makes sure the working directory is set to this folder
+# All paths are relative to it, so participant scripts work when we purl it
+knitr::opts_chunk$set(echo = TRUE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
+set.seed(123)
+```
 
 In the previous section we discussed how we can perform differential expression analysis using pseudo-bulk samples, when multiple _biological replicates_ are available in a multi-condition experiment. 
 Differential expression analysis addresses the question of whether a gene has a different average expression between the two groups being compared. 
 However, another useful question to address is whether the _cell composition_ also differs between conditions. 
-We could imagine, for example, that natural killer cells are more abundant in leukemia samples than in healthy samples. 
+We could imagine that B-cell precursor populations expand in leukaemia samples, leading to reduced relative abundance of T and NK cells.
 
-```{r libraries}
+This type of analysis is referred to as **differential abundance analysis**. 
+
+We start our analysis, as always, by loading our packages:
+
+```{r libraries, message=FALSE, warning=FALSE}
 # load packages
 library(BiocParallel)
 library(scran)
@@ -29,14 +42,15 @@ library(tidyverse)
 library(patchwork)
 ```
 
+We will continue working with our PBMMC and ETV6-RUNX1 samples, as we did in the differential expression section. 
+Note that we've modified the data used in this section to make sure we have some significant DA results to show (in reality, the original data did not show any differences).
+
 ```{r, loaddata}
 # Load data
-sce <- readRDS("RObjects/Annotated.full.ETV6.PBMMC.sce.rds")
+# Note: this data has been modified for the purpose of this demonstration
+# To make sure we have some significant DA results to show.
+sce <- readRDS("RObjects/MiloDemo.sce.rds")
 ```
-
-This type of analysis is referred to as **differential abundance analysis**. 
-
-We will continue working with our PBMMC and ETV6-RUNX1 samples, as we did in the differential expression section. 
 
 One method to perform DA analysis is to simply count how many cells occur in each label + condition combination and then test for differences in the counts between the two conditions. 
 
@@ -68,12 +82,11 @@ This is very similar to the `SingleCellExperiment` object, but also includes inf
 sce
 
 # plot UMAP done on the batch-corrected data
-plotReducedDim(sce, dimred = "UMAP", 
-               colour_by = "label", 
+plotReducedDim(sce, dimred = "UMAP",
+               colour_by = "label",
                text_by = "label")
 
 # convert to a Milo object
-
 milo <- Milo(sce)
 
 milo
@@ -93,9 +106,9 @@ This is very similar to what we did earlier in the clustering session, except no
 
 ```{r build_graph}
 # add KNN graph to Milo object
-milo <- buildGraph(milo, 
-                   k = 60, 
-                   d = 50, 
+milo <- buildGraph(milo,
+                   k = 48,
+                   d = 20,
                    reduced.dim = "HARMONY", 
                    BPPARAM = MulticoreParam(7))
 ```
@@ -129,10 +142,10 @@ This is done with the `makeNhodds()` function:
 
 ```{r make_neighbourhoods, message=FALSE}
 # sample index cells to define neighbourhoods
-milo <- makeNhoods(milo, 
-                   prop = 0.1, 
-                   k = 48, 
-                   d = 50, 
+milo <- makeNhoods(milo,
+                   prop = 0.1,
+                   k = 48,
+                   d = 20,
                    reduced_dims = "HARMONY")
 
 # check our object again
@@ -174,7 +187,7 @@ We should count cells at the biological replicate leve, which in our case is sto
 
 ```{r count_cells, message=FALSE}
 # count cells in each neighbourhood
-milo <- countCells(milo, 
+milo <- countCells(milo,
                    meta.data = colData(milo),
                    samples = "SampleName")
 
@@ -200,7 +213,7 @@ For example, neighbourhoods that are closer to each other may have similar p-val
 ```{r calcultate_neighbourhood_distance, message=FALSE}
 # calculate distances between neighbourhoods - for p-value correction
 # This step takes a few minutes
-milo <- calcNhoodDistance(milo, d = 50, reduced.dim = "HARMONY")
+milo <- calcNhoodDistance(milo, d = 20, reduced.dim = "HARMONY")
 ```
 
 As before, the value of `d` (number of dimensions to consider from our MNN-corrected matrix) should be the same that was used for building our initial graph. 
@@ -219,8 +232,10 @@ We would normally do this if we know there is a batch effect that we want to acc
 
 ```{r milo_design, message=FALSE}
 # define a table for our model design
-sample_info <- unique(colData(milo)[,c("SampleName", "SampleGroup")])
+sample_info <- unique(colData(milo)[, c("SampleName", "SampleGroup")])
 rownames(sample_info) <- sample_info$SampleName
+# order the table to match the order of samples in our counts matrix
+sample_info <- sample_info[colnames(nhoodCounts(milo)), ]
 
 sample_info
 ```
@@ -229,9 +244,9 @@ Now we can do the DA test, explicitly defining our experimental design. In this 
 
 ```{r test_neighbourhoods, message=FALSE}
 # run DA test
-da_results <- testNhoods(milo, 
-                         design = ~ SampleGroup, 
-                         design.df = sample_info, 
+da_results <- testNhoods(milo,
+                         design = ~ SampleGroup,
+                         design.df = sample_info,
                          reduced.dim = "HARMONY")
 
 # results are returned as a data.frame
@@ -249,7 +264,7 @@ This [blog article](http://varianceexplained.org/statistics/interpreting-pvalue-
 
 ```{r plot_DA_pvalue_histogram, message=FALSE}
 # p-value histogram
-ggplot(da_results, aes(PValue)) + 
+ggplot(da_results, aes(PValue)) +
   geom_histogram(bins = 50)
 ```
 
@@ -258,9 +273,9 @@ Next, we can get an overview of our results as a volcano plot, marking a signifi
 ```{r plot_DA_volcano, message=FALSE}
 # volcano plot
 # each point in this plot corresponds to a neighbourhood (not a cell)
-ggplot(da_results, aes(logFC, -log10(SpatialFDR))) + 
+ggplot(da_results, aes(logFC, -log10(SpatialFDR))) +
   geom_point(aes(colour = FDR < 0.1)) +
-  geom_hline(yintercept = 1) 
+  geom_hline(yintercept = 1)
 ```
 
 As we can see, several neighbourhoods fall below our FDR threshold, indicating significant differential abundance of cells between PBMMC and ETV6-RUNX1 samples. 
@@ -274,16 +289,18 @@ We can then super-impose this graph on our original UMAP (or t-SNE), to compare 
 milo <- buildNhoodGraph(milo)
 ```
 
-```{r visualise_results, message=FALSE}
+```{r visualise_results, message=FALSE, fig.width=8}
 # our original UMAP with our previously annotated cell labels
-umap_plot <- plotReducedDim(milo, 
-                            dimred = "UMAP", 
-                            colour_by = "label", 
-                            text_by = "label")
+umap_plot <- plotReducedDim(milo,
+                            dimred = "UMAP",
+                            colour_by = "label",
+                            text_by = "label") +
+  theme(legend.position = "none")
 
 # the neighbourhood map adjusted to match UMAP embedding
-nh_graph_plot <- plotNhoodGraphDA(milo, 
-                                  da_results, 
+nh_graph_plot <- plotNhoodGraphDA(milo,
+                                  da_results,
+                                  res_column = "logFC",
                                   layout = "UMAP",
                                   alpha = 0.05)
 
@@ -337,14 +354,14 @@ head(da_results)
 
 Finally, we can visualise the distribution of DA fold changes in different labels.
 
-```{r beeswarm_plot_by_label, message=FALSE}
+```{r beeswarm_plot_by_label, message=FALSE, fig.height=7, fig.width=8}
 # distribution of logFC across neighbourhood labels
 plotDAbeeswarm(da_results, group.by = "label")
 ```
 
 We can see that several clusters are enriched and some are depleted between our sample groups. 
 There are not many DA neighbourhoods with a mixed label either.
-And we can see that B cells cluster 1 has quite a discontinuity in log fold changes - this is what was causing the odd distribution in the volcano plot, and we saw earlier is likely due to a sub-population of B cells with different representation across our samples. 
+And we can see that B cells cluster 3 has quite a discontinuity in log fold changes - this is what was causing the odd distribution in the volcano plot, and we saw earlier is likely due to a sub-population of B cells with different representation across our samples. 
 
 It is also worth noting that this analysis may also reveal uncorrected batch effects, which would lead to an artificial separation of our samples according to their group. 
 As always, we should always proceed in our analysis with care and back our conclusions with further confirmatory experiments. 
@@ -353,12 +370,11 @@ There are further downstream analysis possible to identify genes that differenti
 This is similar in spirit to the marker gene analysis we did earlier, but based on the neighbourhood graph constructed by Milo. 
 You can consult the [package's main vignette](https://bioconductor.org/packages/release/bioc/vignettes/miloR/inst/doc/milo_gastrulation.html#5_Finding_markers_of_DA_populations) to see examples of these downstream analysis. 
 
-
-## Session information
+----
 
 <details><summary>`sessionInfo()`</summary>
 
-```{r, echo=FALSE}
+```{r session_info, echo=FALSE, purl=FALSE}
 sessionInfo()
 ```
 
