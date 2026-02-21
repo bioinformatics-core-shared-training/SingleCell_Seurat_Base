@@ -1,0 +1,374 @@
+---
+title: "Introduction to single-cell RNA-seq analysis"
+subtitle: Differential expression analysis with Seurat
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    pandoc_args: ["--number-offset", "9"] # TOC will start at 10
+    code_folding: show
+    css: ../css/boxes.css
+---
+
+# Differential expression analysis
+
+When we have data for multiple conditions (e.g. control vs treatment, healthy vs diseased, wild-type vs mutant, etc.) and multiple biological replicates for each of them, we can investigate which genes are differentially expressed between conditions. 
+This is similar to what is done in more conventional bulk RNA-seq analysis, but in this case we have the added benefit of being able to do our analysis focusing on particular cell clusters/types (which would not be possible to do in a bulk experiment, unless we had done cell-sorting before the sequencing). 
+
+Differential analyses of multi-condition scRNA-seq experiments can be broadly split into two categories:
+
+- **differential expression** (DE) tests for changes in expression between conditions for cells of the same 'type' that are present in both conditions.
+- **differential abundance** (DA) tests for changes in the composition of cell types (or states, etc.) between conditions.
+
+In this section we will cover the first of these, i.e. how to do a differential expression analysis for a simple design with a single factor (variable) with two levels (conditions). 
+In our case this corresponds to the comparison between cells from healthy (PBMMC) versus leukemia (ETV6-RUNX1) donors. 
+
+The standard method for doing this in `Seurat` is to reuse the `FindMarkers` function, which we used earlier to find cluster markers genes. However, instead of comparing clusters, they compare conditions by inputing the groups to be compared into the `ident.1` and `ident.2` arguments.
+
+The main problem with this approach is that it treats cells as replicates and ignores the fact that they are nested within samples (i.e. donors). The pseudoreplicates are not independent from one another and so this approach can lead to an inflated false positive rate (i.e. it will identify many genes as differentially expressed when they are not). Sometimes this is called pvalue inflation. 
+
+In order to avoid this problem, we can use a pseudo-bulk approach, which consists of aggregating the counts for all cells of the same type (e.g. cluster) and sample (e.g. donor) into a single 'pseudo-bulk' sample, and then running a bulk RNA-seq differential expression analysis on these pseudo-bulk samples. The methods designed for bulk RNA-seq data are appropriate for this type of analysis and we also avoid the previously discussed issue of sparsity of scRNA-seq data, since the pseudo-bulk samples will have much higher counts than individual cells.
+
+There are three main steps for a bulk analysis: 
+
+- Creating the pseudo-bulk samples
+- Filter low-count cells/samples 
+- Run the differential analysis
+
+## Setup
+
+```{r, echo=FALSE}
+# Setup ----
+```
+
+We start by loading our packages and the single-cell object that will be used. 
+We will focus our analysis on the set of PBMMC (healthy) and ETV6-RUNX1 (leukemia) samples. 
+These data are the full dataset (rather than those downsamled to 500 cells per sample as we have used previously) and have gone through QC, normalised, batch-corrected and clustered as shown in the previous sections. 
+We have clustered the cells using the Leiden algorithm with k=48, and did some basic cell type annotation based on known markers of blood/immune cells. 
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(Seurat)
+library(ggplot2)
+library(tidyverse)
+library(DESeq2)
+```
+
+```{r load-data}
+# Load the data
+seurat_object <- readRDS("RObjects/Annotated.full.ETV6.PBMMC.rds")
+# plot umap
+DimPlot(seurat_object,
+        reduction = "umap",
+        group.by = "Idents",
+        label = TRUE,
+        label.size = 5) +
+  NoLegend()
+```
+
+## Creating pseudo-bulk samples
+
+```{r, echo=FALSE}
+
+# Create pseudo-bulk samples -----
+```
+
+Pseudo-bulk samples consist of summing the counts across all the cells for a given **sample** and **cell Idents** combination. 
+It is up to you to decide what the cell labels should consist of. 
+In our case, we're using the Leiden clusters, which were further manually annotated according to cell types. 
+But you may have defined these labels, for example, based on a more systematic cell type annotation using public atlases or reference gene panels (see [Chapter 7 - Cell type annotation](http://bioconductor.org/books/3.16/OSCA.basic/cell-type-annotation.html) in the OSCA book).
+
+To revise, here is how our sample + label combinations look like: 
+
+```{r table_label_sample}
+# tabulate number of cells per label + sample combination
+table(seurat_object$Idents, seurat_object$SampleName)
+```
+
+We can see that the contribution of each sample to the different labels (clusters) is quite unbalanced for some of them. 
+This may be biologically correct, or it may prompt us to revise our batch correction step. 
+For now, we will proceed with these data as they are. 
+
+We use `Idents` and `SampleName` as the variables to aggregate by. 
+We therefore will have a maximum of 7x23 (161) pseudo-samples. 
+We will have less than this because, as we saw, there are some clusters with no cells from a particular sample.
+
+## Pseudo-bulk aggregation
+
+```{r pseudo-bulk-aggregation}
+# Aggregate counts by sample and celltype
+pseudo_bulk <- AggregateExpression(seurat_object,
+                                  group.by = c("Idents", "SampleName"),
+                                  assays = "RNA",
+                                  return.seurat = TRUE)
+# check the new assay
+pseudo_bulk
+```
+
+We end up with 142 pseudo-bulk samples, which are the result of aggregating the counts for all cells of the same sample and cluster.
+
+```{r check-pseudo-bulk}
+head(Cells(pseudo_bulk))
+```
+
+It has named each cell by concatenating the sample name and the cluster name, so it is easy for us to tell which pseudosamples we are dealing with.
+
+We can also have a look at the metadata it has retained.
+
+```{r check-pseudo-bulk-meta}
+head(pseudo_bulk@meta.data)
+```
+
+We can see that although it has retained the `SampleName` and `Idents` variables, it has not retained the `SampleGroup` variable, which is the one we will need for our differential analysis.
+
+Like we did in the first section, we can add this variable back to the metadata of the pseudo-bulk object by using the `SampleName` variable to match it to the original metadata.
+
+```{r add-sample-group}
+# add SampleGroup variable to the metadata of the pseudo-bulk object
+temp_metadata <- pseudo_bulk@meta.data %>%
+  mutate(SampleGroup = str_remove(SampleName, "-.*")) %>%
+  mutate(Cluster = Idents)
+pseudo_bulk@meta.data <- temp_metadata
+# check the new metadata
+head(pseudo_bulk@meta.data)
+```
+
+## Filtering Pseudosamples
+
+Before we run the differential expression analysis, it is important to filter out low-count samples, as these can lead to unreliable results. For example if a pseudosample was created from only 5 cells and another pseudosample was created from 1000 cells, the counts in the first pseudosample will be much lower than those in the second pseudosample, and this can lead to a bias in the differential expression analysis. Looking back at our table of the number of cells per sample and cluster combination, we can see that there are some combinations with very few cells (e.g. cluster 7 has only 3 cell from sample ETV6RUNX1-1). We will filter out any pseudosample that was created from less than 20 cells.
+
+```{r filter-pseudo-bulk}
+# filter out pseudosamples with less than 20 cells
+# determine which pseudosamples have at least than 20 cells
+ps_keep <- table(seurat_object$Idents, seurat_object$SampleName) %>%
+  as.data.frame() %>%
+  filter(Freq >= 20) %>%
+  mutate(PseudoSample = str_c(Var1, "_", Var2)) %>%
+  pull(PseudoSample)
+# subset our pseudo-bulk object to keep only the pseudosamples with at least 20 cells
+pseudo_bulk <- subset(pseudo_bulk, cells = ps_keep)
+```
+
+We should also filter out the very lowly detected genes as they can appear more significant that they are due to the low counts and the fact that they are more likely to be detected in one group than the other just by chance. We will filter out any rows in our counts matrix that have less than 5 counts across all pseudosamples.
+
+```{r filter-genes-pseudo-bulk}
+# filter out genes with less than 5 counts across all pseudosamples
+# determine which genes have at least 5 counts across all pseudosamples
+genes_keep <- rowSums(pseudo_bulk@assays$RNA$counts) >= 5
+# subset our pseudo-bulk object to keep only the genes with at least 5 counts across
+pseudo_bulk <- subset(pseudo_bulk, features = names(genes_keep)[genes_keep])
+```
+
+
+## Differential Testing of the whole dataset
+
+Now that we have our pseudobulk samples we can proceed with our analyis. We could use standard bulk RNA-seq R/Bioconductor packages, such as `edgeR`, `DESeq2` or `limma`. However the `FindMarkers()` function in `Seurat` also supports testing for differential expression using the pseudobulk samples, and it is a convenient way to do this without having to switch to a different package. Instead of using the Wilcoxon rank sum test, which is the default method for testing differential expression in `FindMarkers()`, we can specify `test.use = "DESeq2"` to use the DESeq2 method for testing differential expression on the pseudobulk samples.
+
+For this to work we need the `Idents` of our pseudo-bulk object to be set to the variable that contains the sample group information (i.e. `SampleGroup`), so that `FindMarkers()` knows which groups to compare. We can do this by using the `Idents()` function to set the `Idents` of our pseudo-bulk object to the `SampleGroup` variable in the metadata.
+
+```{r deseq2}
+Idents(pseudo_bulk) <- pseudo_bulk$SampleGroup
+
+# Run DESeq2 on pseudobulk samples
+de <- FindMarkers(pseudo_bulk,
+                  ident.1 = "ETV6RUNX1",
+                  ident.2 = "PBMMC",
+                  test.use = "DESeq2")
+head(de)
+
+```
+
+The results output we get from this analysis is a summarised version of what we would get had we run the same analysis directly with DESeq2. The columns are as follows:
+
+- `p_val`: p-value of the test
+- `avg_log2FC`: average log2 fold change between the two groups
+- `pct.1`: percentage of pseudobulk samples in group 1 (ETV
+RUNX1) that have non-zero counts for the gene
+- `pct.2`: percentage of pseudobulk samples in group 2 (PBMMC
+) that have non-zero counts for the gene
+- `p_val_adj`: adjusted p-value for multiple testing
+
+The default statistical test in DeSeq2 is the Wald test, which tests whether the log2 fold change between the two groups is significantly different from zero and the default multiplicity testing correction is a Benjamini-Hochberg correction, which is a false discovery rate (FDR).
+
+## Differential Testing within clusters
+
+This DE analysis is the same as doing a bulk experiment but what we really want to know is how the different sample groups (ETV6-RUNX1 vs PBMMC) differ in terms of their gene expression within each cluster (or celltype). We should also bear in mind that due to the pseudosamples we have after filtering, not all comparisons will be possible for all clusters. For example, cluster 7 has 2 pseudosamples from the ETV6-RUNX1 group and no pseudosamples from the PBMMC group, so we cannot do a DE analysis for this cluster.
+
+In order to do this we need to add more detail to the `Idents` of our pseudo-bulk object, so that it contains both the sample group and the cluster information. We can do this by concatenating the `SampleGroup` and `Cluster` variables in the metadata of our pseudo-bulk object.
+
+```{r add-cluster-sample-group}
+# add cluster information to the Idents of our pseudo-bulk object
+pseudo_bulk$Cluster_SampleGroup <- str_c(pseudo_bulk$Cluster,
+                                         pseudo_bulk$SampleGroup, sep = "_")
+Idents(pseudo_bulk) <- pseudo_bulk$Cluster_SampleGroup
+```
+
+Now lets try to look for differentially expressed genes between the ETV6RUNX1 and PBMMC groups within our B cell cluster 6. 
+
+The simplicity of the `FindMarkers` function means it is very easy to run but as with any differential expression analysis, it is important to carefully consider the design of the experiment and the assumptions of the statistical test being used. There are some plots we can draw to reassure ourselves that the assumptions of the test are being met, for example we can draw a PCA plot of our pseudo-bulk samples to see if they cluster by sample group and if there are any outliers that may be driving the results. 
+
+```{r pca-pseudo-bulk}
+# PCA plot of pseudo-bulk samples
+c6 <- subset(pseudo_bulk, subset = Cluster == "B (c6)")
+c6_counts <-  GetAssayData(c6, assay = "RNA", layer = "counts")
+pca <- prcomp(t(c6_counts))
+pca_df <- data.frame(pca$x, SampleGroup = c6$SampleGroup)
+ggplot(pca_df, aes(x = PC1, y = PC2, color = SampleGroup)) +
+  geom_point() +
+  theme_classic()
+```
+
+We can run the comparision by specifying the `ident.1` and `ident.2` arguments in the `FindMarkers()` function to be the corresponding cluster and sample group combinations.
+
+```{r deseq2-cluster}
+# Run DESeq2 on pseudobulk samples for cluster 6
+de_cluster6 <- FindMarkers(pseudo_bulk,
+                           ident.1 = "B (c6)_ETV6RUNX1",
+                           ident.2 = "B (c6)_PBMMC",
+                           test.use = "DESeq2")
+head(de_cluster6)
+```
+
+The output dataframe has all the information for all genes tested. 
+
+We can draw a MA plot to see if the variance of our data is consistent with the assumptions of the DESeq2 method. An MA plot should have a "trumpet" like shape.
+
+```{r ma-plot}
+# MA plot of DE results for cluster 6
+# calculate mean expression for each gene
+mean_expression <- rowMeans(c6_counts)
+# add mean expression to DE results
+de_cluster6$mean_expression <- mean_expression[rownames(de_cluster6)]
+# plot MA plot
+ggplot(de_cluster6, aes(x = log2(mean_expression), y = avg_log2FC)) +
+  geom_point() +
+  theme_classic() +
+  xlab("Log2 mean expression") +
+  ylab("Log2 fold change") +
+  ggtitle("MA plot for cluster 6")
+
+```
+
+We can also check the pvalue histogram to get an idea of how the dataset behaved in the analysis. If the p-value histogram is uniform (i.e. flat) it suggests that there are no differentially expressed genes between the two groups, while if there is a peak near zero it suggests that there are many differentially expressed genes between the two groups. This is a useful blog article which goes into more detail. 
+
+http://varianceexplained.org/statistics/interpreting-pvalue-histogram/
+
+```{r pvalue-histogram}
+# p-value histogram for DE results for cluster 6
+hist(de_cluster6$p_val, breaks = 50, 
+     main = "P-value histogram for cluster 6", 
+     xlab = "P-value")
+```
+
+The extra distrete peak/s we see are indicative of sparse data, which is common in scRNA-seq data. Since we have already pseudobulked this is like due to not having harsh enough filters on the number of cells per pseudosample or the number of counts per gene.
+
+If we are satisfied with these plots we can have a look at our differentially expressed genes. The `avg_log2FC` column gives us the log2 fold change between the two groups, so a value of 1 means that the gene is expressed 2 times higher in the ETV6-RUNX1 group compared to the PBMMC group, while a value of -1 means that the gene is expressed 2 times lower in the ETV6-RUNX1 group compared to the PBMMC group. The `p_val_adj` column gives us the adjusted p-value for multiple testing, so we can use this to determine which genes are significantly differentially expressed between the two groups.
+
+We can filter this dataframe to keep only the genes that are significantly differentially expressed between the two groups, for example by keeping only the genes with an adjusted p-value less than 0.05 and an absolute log2 fold change greater than 1.
+
+```{r filter-de-cluster6}
+# filter the DE results for cluster 6
+de_cluster6_sig <- de_cluster6 %>%
+  filter(p_val_adj < 0.05 & abs(avg_log2FC) >1)
+dim(de_cluster6_sig)
+```
+
+This gives us 429 significantly differentially expressed genes between the ETV6-RUNX1 and PBMMC groups within the B cell cluster  6 with a log fold change greater than 1. 
+
+We can draw some expression plots of the one of the top differentially expressed genes to see how it differs across the clusters.
+
+```{r expression-plots}
+# expression plots for one of the top differentially expressed genes
+top_gene <- "MDK"
+# counts for the top gene
+top_gene_counts <- GetAssayData(pseudo_bulk, 
+                                assay = "RNA", 
+                                layer = "counts")[top_gene, ]
+# plot expression of the top gene across the clusters and sample groups
+top_gene_df <- data.frame(Expression = top_gene_counts,
+                          Cluster = pseudo_bulk$Cluster,
+                          SampleGroup = pseudo_bulk$SampleGroup,
+                          SampleName = pseudo_bulk$SampleName)
+ggplot(top_gene_df, aes(x = SampleName, y = Expression, color = SampleGroup
+)) +
+  geom_point() +
+  xlab("Cluster") +
+  ylab("Expression of MDK") +
+  ggtitle("Expression of MDK across clusters and sample groups") +
+  facet_wrap(~ Cluster) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+We can also see the expression of this gene on the UMAP plot to see how it differs across the sample groups in the single cell level data.
+
+```{r umapMDK}
+FeaturePlot(seurat_object, features = top_gene, split.by = "SampleGroup")
+```
+
+
+## Exercise
+
+:::exercise
+
+Repeat the differential expression analysis for the CD20+ B cell cluster and see how many significantly differentially expressed genes you find between the ETV6-RUNX1 and PBMMC groups with a log fold change greater than 1. Plot one of the differentially expressed gene across the clusters and sample groups to see how it differs across the clusters.
+
+<details><summary>Answer</summary>
+
+```{r exercise1, purl=FALSE}
+# Run DESeq2 on pseudobulk samples for cluster 10
+de_cluster10 <- FindMarkers(pseudo_bulk,
+                           ident.1 = "CD20+ B (c10)_ETV6RUNX1",
+                           ident.2 = "CD20+ B (c10)_PBMMC",
+                           test.use = "DESeq2")
+# filter the DE results for cluster 10
+de_cluster10_sig <- de_cluster10 %>%
+  filter(p_val_adj < 0.05 & abs(avg_log2FC) >1)
+dim(de_cluster10_sig)
+
+# plot the top differentially expressed gene for cluster 10
+top_gene <- rownames(de_cluster10_sig)[1]
+top_gene_counts <- GetAssayData(pseudo_bulk, 
+                                assay = "RNA", 
+                                layer = "counts")[top_gene, ]
+# plot expression of the top gene across the clusters and sample groups
+top_gene_df <- data.frame(Expression = top_gene_counts,
+                          Cluster = pseudo_bulk$Cluster,
+                          SampleGroup = pseudo_bulk$SampleGroup,
+                          SampleName = pseudo_bulk$SampleName)
+ggplot(top_gene_df, aes(x = SampleName, y = Expression, color = SampleGroup
+)) +
+  geom_point() +
+  xlab("Cluster") +
+  ylab("Expression of SOCS2") +
+  ggtitle("Expression of SOCS2 across clusters and sample groups") +
+  facet_wrap(~ Cluster) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Although the changes in the 13 genes we have filtered are significant in our cluster, they are changing more in other clusters. For example, the top differentially expressed gene in cluster 10 is SOCS2, which is also significantly differentially expressed in cluster 6 but with a higher log fold change. This is not unsurprising as cluster 6 and cluster 10 are both B cell clusters, so we would expect them to share some of the same differentially expressed genes between the two groups.
+
+
+</details>
+
+:::
+
+
+## Other possible testing methods
+ 
+Seurat's `FindMarkers()` function also supports other methods for testing differential expression, which can be specified using the `test.use` parameter:
+
+“wilcox” : Wilcoxon rank sum test (default, using ‘presto’ package)
+“wilcox_limma” : Wilcoxon rank sum test (using ‘limma’ package)
+“bimod” : Likelihood-ratio test for single cell feature expression, (McDavid et al., Bioinformatics, 2013)
+“roc” : Standard AUC classifier
+“t” : Student’s t-test
+“poisson” : Likelihood ratio test assuming an underlying negative binomial distribution. Use only for UMI-based datasets
+“negbinom” : Likelihood ratio test assuming an underlying negative binomial distribution. Use only for UMI-based datasets
+“LR” : Uses a logistic regression framework to determine differentially expressed genes. Constructs a logistic regression model predicting group membership based on each feature individually and compares this to a null model with a likelihood ratio test.
+“MAST” : GLM-framework that treates cellular detection rate as a covariate (Finak et al, Genome Biology, 2015) (Installation instructions)
+“DESeq2” : DE based on a model using the negative binomial distribution (Love et al, Genome Biology, 2014) (Installation instructions) For MAST and DESeq2, please ensure that these packages are installed separately in order to use them as part of Seurat. Once installed, use the test.use parameter can be used to specify which DE test to use.
+
+```{r session-info}
+sessionInfo()
+```

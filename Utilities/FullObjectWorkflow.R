@@ -181,7 +181,7 @@ saveRDS(sce_object_EP, "../RObjects/Annotated.full.ETV6.PBMMC.sce.rds")
 
 
 seurat_object_HP <- subset(seurat_object,
-                           subset = SampleGroup == "PRET" | SampleGroup == "HDD")
+                           subset = SampleGroup == "PRET" | SampleGroup == "HHD")
 # drop factor levels to avoid issues with downstream analyses
 
 seurat_object_HP@meta.data$orig.ident <- droplevels(seurat_object_HP@meta.data$orig.ident)
@@ -189,7 +189,7 @@ levels(seurat_object_HP@meta.data$orig.ident)
 seurat_object_HP@meta.data$SampleName <- droplevels(seurat_object_HP@meta.data$SampleName)
 levels(seurat_object_HP@meta.data$SampleName)
 
-saveRDS(seurat_object_HP, "../RObjects/Annotated.full.PRET.HDD.rds")
+saveRDS(seurat_object_HP, "../RObjects/Annotated.full.PRET.HHD.rds")
 sce_object_HP <- as.SingleCellExperiment(seurat_object_HP)
 colLabels(sce_object_HP) <- Idents(seurat_object_HP)
-saveRDS(sce_object_HP, "../RObjects/Annotated.full.PRET.HDD.sce.rds")
+saveRDS(sce_object_HP, "../RObjects/Annotated.full.PRET.HHD.sce.rds")
