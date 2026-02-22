@@ -1,0 +1,67 @@
+---
+title: "Differential Abundance Analysis"
+date: "February 2026"
+output:
+  ioslides_presentation:
+    widescreen: yes
+    smaller: yes
+    logo: ../Images/uniOfCamCrukLogos.png
+    css: ../css/stylesheet.css
+  beamer_presentation: default
+---
+
+## Single Cell RNAseq Analysis Workflow
+
+```{r echo=FALSE, out.width='60%', fig.align='center'}
+knitr::include_graphics('../Images/workflow2_diffAbund.png')
+```
+
+## Differential Abundance
+
+Aim:
+
+- test for significant changes in grouped cell abundance across conditions
+
+Example:
+
+- which cell types are depleted or enriched upon treatment?
+
+## Differential Abundance - Milo
+
+- Most methods require defined clusters as input. Assigning cells to discrete clusters in context of continuous differentiation, developmental or stimulation trajectories.
+
+- Methods that don't require clusters also don't model variability in cell numbers among replicates or can only carry out pairwise comparisons.
+
+```{r echo=FALSE, , fig.align='center', out.width= "25%"}
+knitr::include_graphics('../Images/Milo1.png')
+```
+
+- Can be used for complex experimental designs
+
+## Differential Abundance - Milo
+
+```{r echo=FALSE, , fig.align='center', out.width= "100%"}
+knitr::include_graphics('../Images/Milo.png')
+```
+
+## Differential Abundance - Milo
+
+Steps:
+
+- Construct KNN graph
+
+  - rescales UMI count by per-cell sequencing depth
+  - log transforms 
+  - uses PCA
+  - calculates Euclidean distance between cells and its k nearest neighbour in PC space
+  
+- Defines Cell Neighbourhoods by sub-sampling the graph to
+identify useful “index cells” (for computational efficiency)
+
+- Counts cells in Neighbourhoods
+
+- Tests for DA in Neighbourhoods
+
+- Does a multiple testing correction (Spacial FDR)
+
+- Visualises the outputs with our UMAP embeddings
