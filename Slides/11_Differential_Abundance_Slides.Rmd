@@ -65,3 +65,21 @@ identify useful “index cells” (for computational efficiency)
 - Does a multiple testing correction (Spacial FDR)
 
 - Visualises the outputs with our UMAP embeddings
+
+## Conversion to SingleCellExperiment {#less_space_after_title}
+
+```{r echo=FALSE, out.width='50%', fig.align='center'}
+knitr::include_graphics('../Images/sceOverview.png')
+```
+
+- Milo is implemented in R and uses the SingleCellExperiment class as input
+
+- We will have to convert our **Seurat** object to a **SingleCellExperiment** object
+
+- Seurat has a function for this called `as.SingleCellExperiment()`
+
+- The SCE object also has slots for the differnt elements of our data
+  - `colData` for the metadata
+  - `assays` for the count data
+  - `reducedDims` for the dimensionality reduction embeddings
+  
