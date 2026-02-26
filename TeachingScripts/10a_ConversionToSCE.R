@@ -6,7 +6,7 @@ library(tidyverse)
 
 ## ----load data--------------------------------------------------------------
 # Load the Seurat object
-seurat_object <- readRDS("../RObjects/Annotated.full.ETV6.PBMMC.rds")
+seurat_object <- readRDS("RObjects/Annotated.full.ETV6.PBMMC.rds")
 
 
 
