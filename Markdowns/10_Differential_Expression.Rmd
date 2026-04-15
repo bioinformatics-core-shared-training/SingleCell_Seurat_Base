@@ -12,6 +12,16 @@ output:
     css: ../css/boxes.css
 ---
 
+```{r setup, include=FALSE, purl=FALSE}
+# Move all the course files to the `course_files` folder
+# This setup makes sure the working directory is set to this folder
+# All paths are relative to it, so participant scripts work when we purl it
+knitr::opts_chunk$set(echo = TRUE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
+set.seed(123)
+```
+
 # Differential expression analysis
 
 When we have data for multiple conditions (e.g. control vs treatment, healthy vs diseased, wild-type vs mutant, etc.) and multiple biological replicates for each of them, we can investigate which genes are differentially expressed between conditions. 
