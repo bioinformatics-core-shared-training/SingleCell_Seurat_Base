@@ -25,7 +25,7 @@ In the demonstration we performed QC and filtering of 4 of our sample, one from 
 ## Load the sample metadata
 
 ```{r samplesheet}
-sampleinfo <- read_tsv("../Data/sample_sheet.tsv")
+sampleinfo <- read_tsv("Data/sample_sheet.tsv")
 ```
 ## Load the data
 
