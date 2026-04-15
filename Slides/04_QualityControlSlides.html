@@ -3136,21 +3136,19 @@ line-height: 1.9;
 </style>
 
   <style type="text/css">.gdbar img {
-width: 450px !important;
+width: 900px !important;
 height: 100px !important;
 margin: 8px 8px;
 }
 .gdbar {
-width: 500px !important;
+width: 950px !important;
 height: 120px !important;
 }
 slides > slide.title-slide hgroup h1 {
 font-size: 36pt;
 }
-slides > slide:not(.nobackground):before {
-width: 135px;
-height: 30px;
-background-size: 135px 30px;
+slides > slide:not(.title-slide):not(.nobackground):before {
+display: none !important;
 }
 slides > slide hgroup h2 {
 font-size: 120%;
@@ -3179,6 +3177,15 @@ margin-right: auto;;
 }
 .smalltext{
 font-size: 10px;
+}
+.code-box {
+font-size: 24px !important;
+width: fit-content;
+margin: 20px auto;
+text-align: center;
+background-color: #f5f5f5;
+padding: 15px;
+border-radius: 5px;
 }
 .wkfthree{
 float: none;
