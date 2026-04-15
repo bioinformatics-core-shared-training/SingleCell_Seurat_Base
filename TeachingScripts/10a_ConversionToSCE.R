@@ -3,7 +3,7 @@ library(SingleCellExperiment)
 library(tidyverse)
 
 # Load the Seurat object
-seurat_object <- readRDS("../RObjects/Annotated.full.ETV6.PBMMC.rds")
+seurat_object <- readRDS("RObjects/Annotated.full.ETV6.PBMMC.rds")
 
 
 # Convert the Seurat object to a SingleCellExperiment object
