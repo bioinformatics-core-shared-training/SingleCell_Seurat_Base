@@ -1,6 +1,6 @@
 ---
 title: "Alignment and feature counting"
-date: 'September 2022'
+date: 'April 2026'
 output:
   ioslides_presentation:
     widescreen: true
@@ -17,13 +17,12 @@ knitr::include_graphics('Images/workflow2.png')
 
 ## 10x library file structure
 
-The 10x library contains four pieces of information, in the form of DNA sequences,
-for each "read".
+The 10x library contains four pieces of information, in the form of DNA sequences, for each "read".
 
-* **sample index** - identifies the library, with one or two indexes per sample
-* **10x barcode** -  identifies the droplet in the library
-* **UMI** - identifies the transcript molecule within a cell and gene
-* **insert** - the transcript molecule
+-   **sample index** - identifies the library, with one or two indexes per sample
+-   **10x barcode** - identifies the droplet in the library
+-   **UMI** - identifies the transcript molecule within a cell and gene
+-   **insert** - the transcript molecule
 
 ```{r echo=FALSE, out.width='60%', fig.align='center'}
 knitr::include_graphics('Images/tenxLibStructureV3dual2.png')
@@ -31,13 +30,12 @@ knitr::include_graphics('Images/tenxLibStructureV3dual2.png')
 
 ## Raw fastq files
 
-The sequences for any given fragment will generally be delivered in 3 or 4
-files:
+The sequences for any given fragment will generally be delivered in 3 or 4 files:
 
-* **I1**: I7 sample index
-* **I2**: I5 sample index if present (dual indexing only)
-* **R1**: 10x barcode + UMI
-* **R2**: insert sequence
+-   **I1**: I7 sample index
+-   **I2**: I5 sample index if present (dual indexing only)
+-   **R1**: 10x barcode + UMI
+-   **R2**: insert sequence
 
 ```{r echo=FALSE, out.width='60%', fig.align='center'}
 knitr::include_graphics('Images/tenxLibStructureV3dual2.png')
@@ -55,7 +53,7 @@ knitr::include_graphics('Images/fastqcTop.png')
 knitr::include_graphics('Images/multiqc1.png')
 ```
 
-## QC of Raw Reads - MultiQC - Sequence Quality Histograms 
+## QC of Raw Reads - MultiQC - Sequence Quality Histograms
 
 ```{r echo=FALSE, out.width='70%', fig.align='center'}
 knitr::include_graphics('Images/multiqc2.png')
@@ -65,79 +63,80 @@ knitr::include_graphics('Images/multiqc2.png')
 
 The first steps in the analysis of single cell RNAseq data:
 
-* Align reads to genome  
-* Annotate reads with feature (gene) 
-* Quantify gene expression
+-   Align reads to genome\
+-   Annotate reads with feature (gene)
+-   Quantify gene expression
 
 ## Cell Ranger
 
-* 10x Cell Ranger -  This not only carries out the alignment and feature
-  counting, but will also:
-    * Call cells
-    * Generate a summary report in html format
-    * Generate a "cloupe" file
+-   10x Cell Ranger - This not only carries out the alignment and feature counting, but will also:
+    -   Call cells
+    -   Generate a summary report in html format
+    -   Generate a "cloupe" file
 
 Alternative methods include:
 
-* STAR solo:
-    * Generates outputs very similar to CellRanger minus the cloupe file and the QC report
-    * Will run with lower memory requirements in a shorter time than Cell Ranger
-* Alevin:
-    * Based on the popular Salmon tool for bulk RNAseq feature counting
-    * Alevin supports both 10x-Chromium and Drop-seq derived data
+-   STAR solo:
+    -   Generates outputs very similar to CellRanger minus the cloupe file and the QC report
+    -   Will run with lower memory requirements in a shorter time than Cell Ranger
+-   Alevin:
+    -   Based on the popular Salmon tool for bulk RNAseq feature counting
+    -   Alevin supports both 10x-Chromium and Drop-seq derived data
 
 ## Obtaining Cell Ranger {#less_space_after_title}
 
-```{r echo=FALSE, out.width='70%', fig.align='center'}
+```{r echo=FALSE, out.width='80%', fig.align='center'}
 knitr::include_graphics('Images/CellRangerWebsite.png')
 ```
 
 ## Cell Ranger tools
 
-Cell Ranger includes a number of different tools for analysing scRNAseq data,
-including:  
+Cell Ranger includes a number of different tools for analysing scRNAseq data, including:
 
-* `cellranger mkref` - for making custom references  
-* `cellranger count` - for aligning reads and generating a count matrix  
-* `cellranger aggr` - for combining multiple samples and normalising the counts
+-   `cellranger mkref` - for making custom references\
+-   `cellranger count` - for aligning reads and generating a count matrix\
+-   `cellranger aggr` - for combining multiple samples and normalising the counts
 
 ## Preparing the raw fastq files
 
 Cell Ranger requires the fastq file names to follow a convention:
 
-```
-<SampleName>_S<SampleNumber>_L00<Lane>_<Read>_001.fastq.gz
-```
+<pre class="code-box">
+&lt;SampleName&gt;_S&lt;SampleNumber&gt;_L00&lt;Lane&gt;_&lt;Read&gt;_001.fastq.gz
+</pre>
 
 e.g. for a single sample in the Caron data set we have:
 
-```
-    SRR9264343_S0_L001_I1_001.fastq.gz
-    SRR9264343_S0_L001_R1_001.fastq.gz
-    SRR9264343_S0_L001_R2_001.fastq.gz
-```
+<pre class="code-box">   
+SRR9264343_S0_L001_I1_001.fastq.gz
+</pre>
+<pre class="code-box">   
+SRR9264343_S0_L001_R1_001.fastq.gz
+</pre>
+<pre class="code-box">  
+SRR9264343_S0_L001_R2_001.fastq.gz
+</pre>
+
 
 ## Genome/Transcriptome Reference
 
-As with other aligners Cell Ranger requires the information about
-the genome and transcriptome of interest to be provided in a specific format.
+As with other aligners Cell Ranger requires the information about the genome and transcriptome of interest to be provided in a specific format.
 
-* Obtain from the 10x website for human or mouse (or both - PDX)
-* Build a custom reference with `cellranger mkref`
+-   Obtain from the 10x website for human or mouse (or both - PDX)
+-   Build a custom reference with `cellranger mkref`
 
 ## Running `cellranger count`
 
-* Computationally very intensive
-* High memory requirements
+-   Computationally very intensive
+-   High memory requirements
 
 ```{r echo=FALSE, out.width='70%', fig.align='center'}
 knitr::include_graphics('Images/CellRangerCommand.png')
 ```
 
-
 ## Cell Ranger outputs
 
-* One directory per sample
+-   One directory per sample
 
 ```{r echo=FALSE, out.width='60%', fig.align='center'}
 knitr::include_graphics('Images/CellRangerOutput.png')
