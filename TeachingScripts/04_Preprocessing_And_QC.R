@@ -3,7 +3,6 @@ library(Seurat)
 library(sctransform)
 library(tidyverse)
 
-
 #### Load data for a single sample ####
 
 # Read 10x data matrices
@@ -17,24 +16,21 @@ etv6_runx1_1 <- CreateSeuratObject(
   project = "ETV6_RUNX1_1"
 )
 
+
 # Look at the structure of the Seurat object
 etv6_runx1_1
 
-# The metadata can be accessed with the @meta.data slot
-head(etv6_runx1_1@meta.data)
-
-# The counts can be accessed with the @assays slot
-etv6_runx1_1@assays
+# The metadata can be accessed using [[]]
+head(etv6_runx1_1[[]])
 
 # Set the default assay to RNA (raw counts)
 DefaultAssay(etv6_runx1_1) <- "RNA"
 
 # Check the active assay was set correctly
-etv6_runx1_1@active.assay
+DefaultAssay(etv6_runx1_1)
 
-# Pull out the raw counts matrix for the RNA assay for exploratory analysis and QC
-raw_counts <- etv6_runx1_1@assays$RNA$counts
-
+# Pull out the raw counts matrix for the RNA assay for exploratory analysis
+raw_counts <- etv6_runx1_1[["RNA"]]$counts
 
 #### Genes detected per cell ####
 
@@ -46,24 +42,22 @@ plot(density(genes_per_cell),
      main = "",
      xlab = "Genes per cell")
 
+#### UMIs vs detected cells ####
 
-#### Total UMIs vs detected cells ####
-
-# Calculate the mean UMIs per cell for each gene
-mean_umis_per_cell <- rowSums(raw_counts) / (rowSums(raw_counts) > 0)
+# Calculate for each average UMI count per cell in which it is expressed
+avg_umis_per_gene <- rowSums(raw_counts) / rowSums(raw_counts > 0)
 
 # Calculate the proportion of cells expressing each gene
 proportion_cells_expressing <- rowMeans(raw_counts > 0)
 
-# Plot the relationship between mean UMIs per cell and proportion of cells expressing the gene
+# Plot the relationship
 plot(
-  x = mean_umis_per_cell,
+  x = avg_umis_per_gene,
   y = proportion_cells_expressing,
   log = "x",
-  xlab = "Mean UMIs per cell",
+  xlab = "Expression level per gene",
   ylab = "Proportion of cells expressing the gene"
 )
-
 
 #### Gene count distribution ####
 
@@ -80,22 +74,22 @@ boxplot(plot_data, cex = 0.1, las = 1,
         xlab = "% total count per cell",
         horizontal = TRUE)
 
-
 #### Quality control filtering ####
 
 # How many genes are detected in the whole dataset?
 table(rowSums(raw_counts) > 0)
 
 # Identify mitochondrial genes
-mito_genes <- grep(pattern = "^MT-",
-                   x = rownames(raw_counts), value = TRUE)
+mito_genes <- str_subset(rownames(raw_counts), pattern = "^MT-")
 length(mito_genes)
 
-# Calculate the percentage of UMIs mapped to mitochondrial genes and add this as a column to the metadata
+# Calculate the percentage of UMIs mapped to mitochondrial genes 
+# and add this as a column to the metadata
 etv6_runx1_1[["percent.mt"]] <- PercentageFeatureSet(etv6_runx1_1,
                                                      pattern = "^MT-")
 
-head(etv6_runx1_1@meta.data)
+# Check the metadata to see the new column
+head(etv6_runx1_1[[]])
 
 # Distribution of number of genes detected per cell
 VlnPlot(etv6_runx1_1, features = c("nFeature_RNA"), layer = "counts")
@@ -110,7 +104,6 @@ VlnPlot(etv6_runx1_1, features = c("percent.mt"), layer = "counts")
 VlnPlot(etv6_runx1_1,
         features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
         ncol = 3, layer = "counts")
-
 
 #### Multiple samples ####
 
@@ -133,7 +126,7 @@ multi_seurat_object <- CreateSeuratObject(counts = expression_matrix)
 multi_seurat_object
 
 # Pull out the metadata and add sample group and sample name information
-temp_metadata <- multi_seurat_object@meta.data %>%
+temp_metadata <- multi_seurat_object[[]] %>%
   # Add the cell barcodes as a column so we can pull them back in at the end
   rownames_to_column("Cell") %>%
   # Extract the sample group information from the origin identifier
@@ -145,28 +138,28 @@ temp_metadata <- multi_seurat_object@meta.data %>%
   column_to_rownames("Cell")
 
 # Add the modified metadata back to the Seurat object
-multi_seurat_object@meta.data <- temp_metadata
-
+multi_seurat_object[[]] <- temp_metadata
 
 #### QC: remove undetected genes ####
 
+# Get the raw counts to work with
+multi_raw_counts <- multi_seurat_object[["RNA"]]$counts
+
 # How many genes are detected in the whole dataset?
-table(rowSums(multi_seurat_object@assays$RNA$counts) > 0)
+table(rowSums(multi_raw_counts) > 0)
 
 # Filter out genes that are not detected in any cell
 filtered_multi_seurat_object <- subset(
   multi_seurat_object,
-  features = rownames(multi_seurat_object)[
-    Matrix::rowSums(multi_seurat_object[["RNA"]]$counts) > 0
-  ]
+  features = rownames(multi_seurat_object)[rowSums(multi_raw_counts) > 0]
 )
 
 # Check how many genes are detected after filtering
 filtered_multi_seurat_object
 
 # Confirm all of these now have at least 1 count across all cells
-table(rowSums(filtered_multi_seurat_object@assays$RNA$counts) > 0)
-
+filt_raw_counts <- filtered_multi_seurat_object[["RNA"]]$counts
+table(rowSums(filt_raw_counts) > 0)
 
 #### QC: visualising metrics ####
 
@@ -176,9 +169,9 @@ filtered_multi_seurat_object[["percent.mt"]] <-
 
 # Plot the distribution of QC metrics for the merged samples
 VlnPlot(filtered_multi_seurat_object,
-        features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
-        ncol = 3,
-        layer = "counts"
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  ncol = 3,
+  layer = "counts"
 )
 
 VlnPlot(
@@ -188,7 +181,6 @@ VlnPlot(
   layer = "counts",
   pt.size = 0
 )
-
 
 #### QC: filtering low-quality droplets ####
 
@@ -203,7 +195,7 @@ VlnPlot(
   geom_hline(yintercept = 500, color = "red")
 
 # Pull out the metadata for easier manipulation
-metadata <- filtered_multi_seurat_object@meta.data
+metadata <- filtered_multi_seurat_object[[]]
 
 #### Example of how to filter for one sample ####
 
@@ -287,10 +279,10 @@ qc_seurat_object <- subset(
 )
 
 VlnPlot(qc_seurat_object,
-        features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
-        ncol = 3,
-        layer = "counts",
-        pt.size = 0
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  ncol = 3,
+  layer = "counts",
+  pt.size = 0
 )
 
 
@@ -313,14 +305,14 @@ sampleinfo <- read_tsv("Data/sample_sheet.tsv")
 
 
 # Sample group and sample name information to the metadata
-temp_metadata <- seurat_object@meta.data %>%
+temp_metadata <- seurat_object[[]] %>%
   rownames_to_column("Cell") %>%
   mutate(SampleGroup = str_remove(orig.ident, "-.*")) %>% 
   mutate(SampleName = orig.ident) %>%
   column_to_rownames("Cell")
 
-seurat_object@meta.data <- temp_metadata
-head(seurat_object@meta.data)
+seurat_object[[]] <- temp_metadata
+head(seurat_object[[]])
 
 # Add percentage of UMIs mapped to mitochondrial genes to the metadata
 seurat_object[["percent.mt"]] <- PercentageFeatureSet(seurat_object,
@@ -339,7 +331,7 @@ VlnPlot(seurat_object,
         layer = "counts",
         pt.size = 0) +
   ggtitle("Total count of UMIs")
-
+  
 # Plot the distribution of number of genes detected per cell
 # YOUR CODE HERE
 
@@ -351,7 +343,7 @@ VlnPlot(seurat_object,
 
 
 # Extract the metadata for filtering
-metadata <- seurat_object@meta.data
+metadata <- seurat_object[[]]
 
 # Apply the filtering at the SampleGroup level
 # YOUR CODE HERE

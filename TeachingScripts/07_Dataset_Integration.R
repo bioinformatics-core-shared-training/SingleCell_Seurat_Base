@@ -1,12 +1,9 @@
-## ----libraries, warn=FALSE, message=FALSE----------------------------------------
 library(Seurat)
 library(sctransform)
 library(glmGamPoi)
 library(tidyverse)
 library(patchwork)
 
-
-## ----split-----------------------------------------------------------------------
 # Load the data
 seurat_object <- readRDS("RObjects/Filtered.500.rds")
 # Split the data by sample group
@@ -14,8 +11,6 @@ seurat_object[["RNA"]] <- split(seurat_object[["RNA"]],
                                 f = seurat_object$SampleGroup)
 seurat_object
 
-
-## ----reprocess-------------------------------------------------------------------
 # Re-process, Seurat will treat each sample group separately
 seurat_object <- SCTransform(
   seurat_object,
@@ -30,16 +25,12 @@ seurat_object <- RunUMAP(seurat_object,
                          dims = 1:15)
 seurat_object
 
-
-## ----uncorrected-----------------------------------------------------------------
 # Visualise the uncorrected data
 uncorrected_plot <- DimPlot(seurat_object,
                             reduction = "umap",
                             group.by = "SampleName") + 
   ggtitle("Uncorrected data")
 
-
-## ----cluster---------------------------------------------------------------------
 # Run clustering
 seurat_object <- FindNeighbors(seurat_object, reduction = "pca",
                                 dims = 1:15)
@@ -51,21 +42,15 @@ uncorrected_clusters_plot <- DimPlot(seurat_object, reduction = "umap",
  
 uncorrected_plot + uncorrected_clusters_plot                               
 
-
-## ----cluster_unc_tab-------------------------------------------------------------
 # Make a table of the clusters and samples
 table(seurat_object$uncorrected_clusters, seurat_object$orig.ident)
 
-
-## ----harmony---------------------------------------------------------------------
 # Run Harmony integration
 harmony_object <- IntegrateLayers(object = seurat_object, 
                                   method = HarmonyIntegration,
                                   orig.reduction = "pca", 
                                   new.reduction = "harmony")
 
-
-## ----harmony_plot----------------------------------------------------------------
 # Run UMAP
 harmony_object <- RunUMAP(harmony_object, 
                           reduction = "harmony", 
@@ -85,22 +70,12 @@ harmony_clusters_plot <- DimPlot(harmony_object, reduction = "umap",
  
 harmony_plot + harmony_clusters_plot     
 
-#### EXERCISE
-
-#We have just carried out the integration using harmony with data processed separately at the sample group level. Try running the integration with data processed at the sample level and see if you get a different result.
-
-#1. Starting with our filtered data, split the object by `SampleName`.
-#2. Reprocess the data with `SCTransform` and run dimensionality reduction on the new layers.
-#3. Visualise your uncorrected data.
-#4. Run Harmony integration using the `IntegrateLayers` function.
-#5. Visualise the results and compare them with the sample group level integration.
 
 
 
 
 
 
-## ----theta-----------------------------------------------------------------------
 # Run Harmony integration with adjusted theta
 harmony_object_theta <- IntegrateLayers(object = seurat_object, 
                                   method = HarmonyIntegration,
@@ -128,8 +103,6 @@ harmony_object_theta_clusters_plot <- DimPlot(harmony_object_theta,
 
 harmony_object_theta_plot + harmony_object_theta_clusters_plot
 
-
-## ----barplotUnc------------------------------------------------------------------
 #Make a barplot of the clusters and samples
 data.frame(Cluster = seurat_object$uncorrected_clusters, Sample = seurat_object$SampleName) %>%
   ggplot(aes(x = Cluster)) +
@@ -137,8 +110,6 @@ data.frame(Cluster = seurat_object$uncorrected_clusters, Sample = seurat_object$
     labs(title = "Uncorrected data") +
   scale_y_continuous(labels = scales::percent)
 
-
-## ----barplotHarm-----------------------------------------------------------------
 #Make a barplot of the clusters and samples
 data.frame(Cluster = harmony_object_theta$harmony_theta_01_clusters, Sample = harmony_object_theta$SampleName) %>%
   ggplot(aes(x = Cluster)) +
@@ -146,8 +117,6 @@ data.frame(Cluster = harmony_object_theta$harmony_theta_01_clusters, Sample = ha
     labs(title = "Harmony Corrected data") +
   scale_y_continuous(labels = scales::percent)
 
-
-## ----markers---------------------------------------------------------------------
 # CD79A (B cells)
 # CST3 (monocytes)
 # CD3D (T cells)
@@ -161,8 +130,6 @@ FeaturePlot(harmony_object_theta, features = c("CD79A", "CST3", "CD3D", "HBA1"),
             reduction = "umap")
 
 
-
-## ----ariSG-----------------------------------------------------------------------
 library(bluster)
 # Calculate the adjusted Rand index
 # Input is a vector of the clusters
@@ -172,28 +139,19 @@ ari.SG <- pairwiseRand(seurat_object$uncorrected_clusters,
 
 ari.SG
 
-
-## ----ariSN-----------------------------------------------------------------------
 ari.SN <- pairwiseRand(seurat_object_sample$uncorrected_clusters,
                     harmony_object_sample$harmony_sample_clusters,
                          mode = "index")
 
 ari.SN
 
-
-## ----ariTheta--------------------------------------------------------------------
 ari.T <- pairwiseRand(seurat_object$uncorrected_clusters,
                     harmony_object_theta$harmony_theta_01_clusters,
                          mode = "index")
 
 ari.T
 
-
-## ----rejoin----------------------------------------------------------------------
 # Rejoin the data
 harmony_object_theta <- JoinLayers(harmony_object_theta, assay = "RNA")
 
-
-## ----session_info----------------------------------------------------------------
 sessionInfo()
-

@@ -151,7 +151,7 @@ p2 <- DimPlot(seurat_object,
               group.by = "Louvain_k20_res0.8",
               label = TRUE) +
   NoLegend()
-
+  
 # plot them together
 p1 + p2
 
@@ -240,7 +240,7 @@ silhouette_stats <- lapply(k_values, function(k) {
 }) %>%
   # bind the list into a single data frame
   bind_rows()
-
+  
 # look at the results
 silhouette_stats
 

@@ -18,7 +18,7 @@ seurat_pbmmc1 <- subset(seurat_object,
                         subset = SampleName == "PBMMC-1")
 
 # Remove genes that are not expressed in any of the 500 cells in this sample
-pbmmc1_expressed_genes <- rowSums(GetAssayData(seurat_pbmmc1, assay = "RNA", layer = "counts")) > 0
+pbmmc1_expressed_genes <- rowSums(seurat_pbmmc1[["RNA"]]$counts) > 0
 seurat_pbmmc1 <- seurat_pbmmc1[pbmmc1_expressed_genes, ]
 
 
@@ -28,7 +28,7 @@ seurat_pbmmc1 <- seurat_pbmmc1[pbmmc1_expressed_genes, ]
 
 # Plot the total UMI counts across cells
 # Get the raw counts data
-GetAssayData(seurat_pbmmc1, assay = "RNA", layer = "counts") %>%
+seurat_pbmmc1[["RNA"]]$counts %>%
   # calculate the total UMI counts for each cell (column sums)
   colSums() %>%
   # convert the named vector to a data frame with cell names and UMI counts
@@ -51,7 +51,7 @@ GetAssayData(seurat_pbmmc1, assay = "RNA", layer = "counts") %>%
 # Reason 2: mean-variance relationship across genes
 
 # Get the raw counts data from the object
-raw_cts <- GetAssayData(seurat_pbmmc1, assay = "RNA", layer = "counts")
+raw_cts <- seurat_pbmmc1[["RNA"]]$counts
 
 # Calculate summary statistics for each gene
 gene_raw_stats <- tibble(gene = rownames(raw_cts),
@@ -82,7 +82,7 @@ seurat_pbmmc1 <- NormalizeData(seurat_pbmmc1)
 seurat_pbmmc1
 
 # Get the log-normalised data from the object
-lognorm_cts <- GetAssayData(seurat_pbmmc1, assay = "RNA", layer = "data")
+lognorm_cts <- seurat_pbmmc1[["RNA"]]$data
 gene_lognorm_stats <- tibble(gene = rownames(lognorm_cts),
                              mean = rowMeans(lognorm_cts),
                              variance = rowVars(lognorm_cts))
@@ -161,7 +161,7 @@ length(intersect(hvgs_vst, hvgs_sct))
 
 # Compare the mean-variance relationship for the sctransform-normalised data
 # Get summary statistics for the Pearson residuals from the sctransform normalisation
-vst_cts <- GetAssayData(seurat_pbmmc1, assay = "SCT", layer = "scale.data")
+vst_cts <- seurat_pbmmc1[["SCT"]]$scale.data
 gene_vst_stats <- tibble(gene = rownames(vst_cts),
                          mean = rowMeans(vst_cts),
                          variance = rowVars(vst_cts))
@@ -179,16 +179,12 @@ ggplot(gene_vst_stats, aes(x = mean, y = variance)) +
 # Compare the total UMI counts per cell for the raw counts and sctransform-normalised data
 
 # get the total UMIs for raw UMIs
-raw_cts_total <- GetAssayData(seurat_pbmmc1, 
-                              assay = "RNA", 
-                              layer = "counts") %>%
+raw_cts_total <- seurat_pbmmc1[["RNA"]]$counts %>%
   colSums() %>%
   enframe(name = "cell", value = "total_counts")
 
 # get the total UMIs for sctransform-normalised counts
-sct_cts_total <- GetAssayData(seurat_pbmmc1, 
-                              assay = "SCT", 
-                              layer = "counts") %>%
+sct_cts_total <- seurat_pbmmc1[["SCT"]]$counts %>%
   colSums() %>%
   enframe(name = "cell", value = "total_counts")
 
