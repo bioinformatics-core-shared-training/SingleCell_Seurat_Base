@@ -9,13 +9,16 @@ output:
     css: ../css/boxes.css
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, purl=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(Seurat)
 library(sctransform)
 library(ggplot2)
 library(tidyverse)
-set.seed = 123 
+knitr::opts_chunk$set(echo = TRUE,
+                      root.dir = here::here("course_files"))
+knitr::opts_knit$set(root.dir = here::here("course_files"))
+set.seed(123)
 ```
 
 ## Introduction
@@ -51,7 +54,7 @@ As Seurat V5 no longer supports parallelisation with `future` this step may take
 <details><summary>Answer</summary>
 ```{r load_data_answer, purl=FALSE}
 samples <- sampleinfo$Sample
-list_of_files <- str_c("../Data/CellRanger_Outputs/", 
+list_of_files <- str_c("Data/CellRanger_Outputs/", 
                        samples, 
                        "/outs/filtered_feature_bc_matrix")
 names(list_of_files) <- sampleinfo$SampleName
