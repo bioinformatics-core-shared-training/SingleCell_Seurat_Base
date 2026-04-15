@@ -7,15 +7,15 @@ if [ ! -f "SingleCell_Seurat_Base.Rproj" ]; then
 fi
 
 # render HTML
-for i in Markdowns/*.Rmd
-do
-  Rscript -e "rmarkdown::render('$i')"
-done
+#for i in Markdowns/*.Rmd
+#do
+#  Rscript -e "rmarkdown::render('$i')"
+#done
 
 # Purl scripts for demos and exercises
 for i in Markdowns/*.Rmd
 do
-  output_file="course_files/Demonstrations/$(basename "${i%.Rmd}.R")"
+  output_file="TeachingScripts/$(basename "${i%.Rmd}.R")"
   
   Rscript -e "knitr::purl('$i', documentation = 0, output = '$output_file')"
 done
