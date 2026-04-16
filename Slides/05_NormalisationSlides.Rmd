@@ -1,6 +1,6 @@
 ---
-title: "Introduction to single-cell RNA-seq analysis - Normalisation and Feature Selection"
-date: "February 2026"
+title: "Normalisation and Feature Selection"
+date: "April 2026"
 output:
   ioslides_presentation:
     widescreen: yes
@@ -42,7 +42,7 @@ knitr::include_graphics('../Images/PBMMC_1_counts_before_norm.png')
 ## Why do UMI counts differ among the cells?
 
 * We derive biological insights downstream by comparing cells against each other.
-* But the UMI count differences makes it harder to compare cells.
+* Differences in the total the UMI count of each cell make direct comparison of expression profiles between cells inappropriate.
 
 * Why do total transcript molecules (UMI counts) detected between cells differ?
   * Biological:
@@ -53,9 +53,9 @@ knitr::include_graphics('../Images/PBMMC_1_counts_before_norm.png')
     * Variable sequencing depth
     * PCR amplification efficiency
 
-Normalization reduces technical differences
-so that differences between cells are not technical but biological,
-allowing meaningful comparison of expression profiles between cells.
+Normalization aims to reduce technical differences whilst preserving biological
+differences, thus allowing meaningful comparison of expression profiles between
+cells.
 
 ## Depth bias
 
@@ -69,7 +69,7 @@ Simple library size normalization accounts for the depth bias
 
 ## Composition bias
 
-* Few genes contribute to most read counts
+* A small number of hightly expressed genes will account for most of the reads
 * In this example, the total read counts are the same across the cells
 * Gene 1 contributes 80% of reads in cell2, leaving other genes with fewer read counts.
 
@@ -86,31 +86,26 @@ Mean and variance of raw counts for genes are correlated
 
 More highly expressed genes tend to look more variable because larger numbers result in higher variance
 
-```{r echo=FALSE, fig.align='right', out.width= "60%", out.extra='style="float:right; padding:10px"'}
+```{r echo=FALSE, fig.align='center', out.width= "70%"}
 knitr::include_graphics('../Images/variance_mean_uncorrected.png')
 ```
-
-A gene expressed at a low level tends to have a low variance across cells:
-
-var(c(2,4,2,4,2,4,2,4)) = 1.14
-
-A gene with the same proportional differences between cells, but expressed at a higher level will have higher variance:
-
-var(c(20,40,20,40,20,40,20,40)) = 114.29
 
 ## Mean-variance correlation
 
-If we take the logs of the expression values, the variances are the same for both genes:
+Mean and variance of raw counts for genes are correlated
 
-var(log(c(2,4,2,4,2,4,2,4))) = 0.14 
+More highly expressed genes tend to look more variable because larger numbers result in higher variance
 
-var(log(c(20,40,20,40,20,40,20,40))) = 0.14
+A gene expressed at a low level tends to have a low variance across cells:
 
-```{r echo=FALSE, , fig.align='right', out.width= "60%", out.extra='style="float:right; padding:10px"'}
-knitr::include_graphics('../Images/variance_mean_uncorrected.png')
-```
+<pre class="code-box">   
+var(c(2, 4, 2, 4, 2, 4, 2, 4)) = 1.14
+</pre>
+A gene with the same proportional differences between cells, but expressed at a higher level will have higher variance:
 
-This "variable stabilising transformation" helps to remove the correlation between mean and variance
+<pre class="code-box">
+var(c( 20, 40, 20, 40, 20, 40, 20, 40)) = 114.29
+</pre>
 
 ## General principle behind normalisation
 
@@ -121,42 +116,63 @@ Normalization has two steps
     * Scale the counts for each gene in each cell by dividing the raw counts with cell specific size factor
   
 2. Transformation: Transform the data after scaling
-    * Per million (e.g. CPM)
     * log2 (e.g. Deconvolution)
     * Pearson residuals (eg. sctransform)
 
 ## Bulk RNAseq methods are not suitable for scRNAseq data
 
-CPM: convert raw counts to counts-per-million (CPM)
-
-* for each cell
-* by dividing counts by the library size then multiplying by 1.000.000.
-* does not address compositional bias caused by highly expressed genes that are also differentially expressed between cells.
-
-DESeq’s size factor
+e.g. DESeq's size factor
 
 * For each gene, compute geometric mean across cells
 * For each cell
     * compute for each gene the ratio of its expression to its geometric mean,
-    * derive the cell’s size factor as the median ratio across genes.
+    * derive the cell's size factor as the median ratio across genes.
 * Not suitable for sparse scRNA-seq data as the geometric mean is computed on non-zero values only.
-
 
 ## SCTransform
 
-"This procedure omits the need for heuristic steps including pseudocount addition or log-transformation and improves common downstream analytical tasks such as variable gene selection, dimensional reduction, and differential expression. We named this method sctransform."
+Simple log transformation of the counts is not ideal for scRNA-seq data as it
+as it fails to fully account for the mean-variance relationship in the data, and
+can lead to overemphasis of lowly expressed genes.
+
+The primary goal of scTansform is to achieve improved variance stabilization.
+
+## SCTransform
+
+Simple log transformation of the counts is not ideal for scRNA-seq data as it
+as it fails to fully account for the mean-variance relationship in the data, and
+can lead to overemphasis of lowly expressed genes.
+
+The primary goal of scTansform is to achieve improved variance stabilization.
 
 Steps:
 
-1. Estimate size factors using a regularized negative binomial regression model
+1. Model the "expected counts" for each gene using a regularized negative
+binomial regression model
 
-2. Scale the counts by dividing the raw counts with the estimated size factors
+    $$
+    \log(\text{expected count}) = \log(\text{sequencing depth}) \times \beta + \text{other factors}
+    $$
 
-3. Apply a variance stabilizing transformation to the scaled counts by calculating Pearson residuals from the negative binomial regression model
+2. Calculate Pearson residuals from the negative binomial regression model -
+these residuals become the normalized values for downstream analysis.
+
+```
+"This procedure omits the need for heuristic steps including pseudocount
+addition or log-transformation and improves common downstream analytical tasks
+such as variable gene selection, dimensional reduction, and differential
+expression. We named this method sctransform."
+```
 
 ## SCTransform
 
-Pearson residual = (Observed value – Expected value) / √(Expected variance)
+1. Model the "expected counts" for each gene using a regularized negative
+binomial regression model
+
+2. Calculate Pearson residuals from the negative binomial regression model -
+these residuals become the normalized values for downstream analysis.
+
+$$\text{Pearson residual} = \frac{\text{Observed value} - \text{Expected value}}{\sqrt{\text{Expected variance}}}$$
 
 If a gene has exactly the expression level we’d expect based on the model → residual = 0
 
@@ -164,23 +180,40 @@ If a gene is expressed higher than expected → positive residual
 
 If a gene is expressed lower than expected → negative residual
 
-These residuals become our normalised values and they’re useful for several reasons:
+## SCTransform
 
-* Standardized scale: All genes end up on the same scale regardless of their expression level
+1. Model the "expected counts" for each gene using a regularized negative
+binomial regression model
 
-* Variance stabilization: Unlike raw counts, these residuals have roughly the same variance across all expression levels. The transformation ensures that genes with different expression levels can be compared fairly – the variance no longer depends on the mean expression level.
+2. Calculate Pearson residuals from the negative binomial regression model -
+these residuals become the normalized values for downstream analysis.
 
-* Interpretation: Positive residuals mean higher-than-expected expression; negative means lower-than-expected. A residual of +2 means “this gene is expressed about 2 standard deviations higher than expected”.  
+$$\text{Pearson residual} = \frac{\text{Observed value} - \text{Expected value}}{\sqrt{\text{Expected variance}}}$$
+
+These residuals have several desirable properties for downstream analysis:
+
+* Standardized scale: All genes end up on the same scale regardless of their
+  expression level
+
+* Variance stabilization: Unlike raw counts, these residuals have roughly the
+  same variance across all expression levels. 
+
+* Interpretation: Positive residuals mean higher-than-expected expression;
+  negative means lower-than-expected. A residual of +2 means “this gene is
+  expressed about 2 standard deviations higher than expected”.  
 
 ## SCTransform
 
 Really Useful Website:
 
+<pre class="code-box">
 https://biostatsquid.com/sctransform-simple-explanation/
+</pre>
 
 ## Inside SCTransform there is a 'selection' of the the most variable genes.
 
-By default these are used for downstream dimensionality reduction and clustering (although in most cases you can change this)
+By default these are used for downstream dimensionality reduction and clustering
+(although in most cases you can change this)
 
 * Which genes should we use for downstream analysis?
 
