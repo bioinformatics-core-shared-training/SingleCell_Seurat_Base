@@ -64,7 +64,7 @@ if [ "$PDF_ONLY" = false ]; then
   echo "=== Rendering Slides to HTML ==="
   for rmd in "${RMD_FILES[@]}"; do
     echo "Rendering $rmd..."
-    conda run -n RNAseq Rscript -e "rmarkdown::render('Slides/$rmd')"
+    Rscript -e "rmarkdown::render('Slides/$rmd')"
   done
   # refresh HTML file list to include any newly rendered files
   if [ ${#DECK_NUMBERS[@]} -gt 0 ]; then
@@ -84,7 +84,7 @@ echo ""
 echo "=== Converting Slides to PDF ==="
 HTML_LIST=$(printf "'%s'," "${HTML_FILES[@]}")
 HTML_LIST="c(${HTML_LIST%,})"
-conda run -n RNAseq Rscript -e "
+Rscript -e "
   files <- ${HTML_LIST}
   for (f in files) {
     out <- sub('html$', 'pdf', f)
